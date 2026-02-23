@@ -2,192 +2,182 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>講師資料整理 - Excel 區塊還原版</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <title>115年度講師資料整理 (格式保存版)</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
     <style>
-        body { font-family: "Microsoft JhengHei", sans-serif; background: #555; margin: 0; padding: 20px; color: #333; }
-        .setup-card { background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; max-width: 1000px; margin-left: auto; margin-right: auto; }
-        textarea { width: 100%; height: 100px; border: 1px solid #ccc; margin: 10px 0; font-family: monospace; }
+        body { font-family: "Microsoft JhengHei", sans-serif; background: #333; color: white; padding: 20px; }
+        .card { background: #fff; color: #333; padding: 20px; border-radius: 8px; max-width: 900px; margin: 0 auto 20px; }
+        textarea { width: 100%; height: 100px; margin: 10px 0; border: 1px solid #ccc; }
+        .status-box { background: #eee; padding: 10px; font-size: 12px; margin-bottom: 10px; color: #666; }
+        .btn { padding: 12px 24px; cursor: pointer; border: none; border-radius: 4px; font-weight: bold; font-size: 16px; }
+        .btn-blue { background: #007bff; color: white; }
+        .btn-green { background: #28a745; color: white; }
         
-        /* 模擬 Excel 區塊的樣式 */
-        .excel-block { 
+        /* 模擬 Excel 區塊預覽 */
+        .block-preview { 
             background: white; border: 2px solid #000; margin: 20px auto; 
-            width: 1100px; position: relative; padding: 5px; overflow-x: auto;
+            width: 95%; padding: 10px; color: #000;
         }
-        .block-header { background: #e8f5e9; padding: 5px; font-weight: bold; border-bottom: 1px solid #000; margin-bottom: 10px; }
-        
-        /* 模擬網格佈局 */
-        .grid-container { display: grid; grid-template-columns: repeat(34, 30px); grid-template-rows: repeat(6, 25px); gap: 1px; background: #ccc; border: 1px solid #000; }
-        .cell { background: white; display: flex; align-items: center; justify-content: center; font-size: 12px; cursor: pointer; border: 0.1px solid #eee; overflow: hidden; }
-        .cell.editable { background: #fffde7; }
-        .cell.v-zone { background: #e3f2fd; font-weight: bold; color: blue; }
-        .cell:hover { border: 1px solid #2196f3; }
-
-        .btn { padding: 10px 20px; background: #2e7d32; color: white; border: none; cursor: pointer; border-radius: 4px; font-weight: bold; }
-        .btn-export { background: #1565c0; }
-        .status { font-size: 13px; color: #666; margin-bottom: 10px; }
+        .v-cell { 
+            display: inline-block; width: 30px; height: 30px; border: 1px solid #999; 
+            text-align: center; line-height: 30px; cursor: pointer; background: #e3f2fd; 
+        }
+        .v-cell:hover { background: #bbdefb; }
+        .v-checked { color: blue; font-weight: bold; background: #fff9c4; }
     </style>
 </head>
 <body>
 
-    <div class="setup-card">
-        <h2>📊 年度資料整理系統 (115年專用)</h2>
-        <div id="loadStatus" class="status">正在載入 110-114 資料庫...</div>
-        <p>請貼入名單 (格式: 系 [Tab] 單位 [Tab] 講師1 [Tab] 講師2...)</p>
-        <textarea id="rawInput" placeholder="在此貼上文字..."></textarea>
-        <button class="btn" onclick="generateBlocks()">1. 解析名單並提取區塊</button>
-        <button class="btn btn-export" onclick="exportExcel()">2. 產出 115年 Excel 檔案</button>
+    <div class="card">
+        <h2>📊 115年度講師資料整理</h2>
+        <div id="status" class="status-box">正在連線資料庫 (114-110)...</div>
+        <textarea id="rawInput" placeholder="在此貼上：崇德 [Tab] 正承佛院 [Tab] 講師名單..."></textarea>
+        <button class="btn btn-blue" onclick="processList()">1. 解析名單並找尋舊資料</button>
+        <button class="btn btn-green" onclick="exportFinalExcel()">2. 匯出 115年 Excel (保留格式)</button>
     </div>
 
-    <div id="editorArea">
-        </div>
+    <div id="displayArea"></div>
 
     <script>
-        let dbWorkbooks = {};
+        let masterData = []; // 存儲所有抓到的區塊資料
         const years = ['114', '113', '112', '111', '110'];
-        let currentDataBlocks = []; // 存放目前編輯中的所有人資料(6x34陣列)
+        let dbs = {};
 
-        // 初始化：讀取所有 Excel 檔案
+        // 初始化：讀取所有資料庫
         window.onload = async () => {
-            const status = document.getElementById('loadStatus');
+            const status = document.getElementById('status');
             for (let yr of years) {
                 try {
                     const res = await fetch(`${yr}master_database.xlsx`);
                     const buf = await res.arrayBuffer();
-                    dbWorkbooks[yr] = XLSX.read(buf);
-                    status.innerHTML += `<br>✅ ${yr}年資料載入成功`;
-                } catch (e) { status.innerHTML += `<br>❌ 未找到 ${yr}年檔案`; }
+                    const wb = new ExcelJS.Workbook();
+                    await wb.xlsx.load(buf);
+                    dbs[yr] = wb.getWorksheet(1);
+                    status.innerHTML += `<br>✅ 已讀取 ${yr}master_database.xlsx`;
+                } catch (e) {
+                    status.innerHTML += `<br>❌ 找不到 ${yr}master_database.xlsx`;
+                }
             }
         };
 
-        // 搜尋邏輯：在指定的 Workbook 找姓名，回傳那 6 列的資料
-        function getBlockByName(name) {
+        // 搜尋人員區塊 (A:AH, 6列)
+        function findPersonBlock(name) {
             for (let yr of years) {
-                const wb = dbWorkbooks[yr];
-                if (!wb) continue;
-                const ws = wb.Sheets[wb.SheetNames[0]];
-                const data = XLSX.utils.sheet_to_json(ws, {header: 1});
+                const sheet = dbs[yr];
+                if (!sheet) continue;
                 
-                // 每 6 列一組，姓名在每一組的第 3 列 (Index 2), 第 4 欄 (Index 3, 即 D 欄)
-                for (let i = 3; i < data.length; i += 6) {
-                    if (data[i+2] && String(data[i+2][3]).trim() === name) {
-                        // 抓取 6x34 的範圍
-                        let block = [];
-                        for (let r = 0; r < 6; r++) {
-                            let row = data[i+r] || [];
-                            while(row.length < 34) row.push(""); // 補齊 34 欄 (A-AH)
-                            block.push(row);
-                        }
-                        return { data: block, year: yr };
+                // 姓名在 D 欄 (第4欄)，每 6 列一組，通常在第 6, 12, 18...列
+                let foundRow = -1;
+                sheet.eachRow((row, rowNum) => {
+                    if (rowNum >= 4 && String(row.getCell(4).value).trim() === name) {
+                        foundRow = rowNum;
                     }
+                });
+
+                if (foundRow !== -1) {
+                    // 鎖定該區塊的起點 (如果是第 6 列找到，起點就是第 4 列)
+                    const blockStart = foundRow - 2; 
+                    let blockData = [];
+                    for (let r = 0; r < 6; r++) {
+                        let rowData = [];
+                        for (let c = 1; c <= 34; c++) { // A 到 AH
+                            const cell = sheet.getRow(blockStart + r).getCell(c);
+                            rowData.push(cell.value);
+                        }
+                        blockData.push(rowData);
+                    }
+                    return { data: blockData, year: yr };
                 }
             }
             return null;
         }
 
-        function generateBlocks() {
+        function processList() {
             const input = document.getElementById('rawInput').value.trim();
             const lines = input.split('\n');
-            const area = document.getElementById('editorArea');
+            const area = document.getElementById('displayArea');
             area.innerHTML = "";
-            currentDataBlocks = [];
+            masterData = [];
 
             lines.forEach(line => {
                 const parts = line.split('\t');
                 if (parts.length < 3) return;
-                const className = parts[1] + parts[0]; // 正承佛院崇德
-                const teachers = parts.slice(2).filter(n => n.trim() !== "");
+                const fullClassName = parts[1] + parts[0]; // 單位+系
+                const names = parts.slice(2).filter(n => n.trim() !== "");
 
-                teachers.forEach(name => {
-                    let result = getBlockByName(name.trim());
-                    let blockData;
-                    let sourceInfo = "";
-
+                names.forEach(name => {
+                    let result = findPersonBlock(name.trim());
+                    let block;
                     if (result) {
-                        blockData = result.data;
-                        sourceInfo = `(來源: ${result.year}年)`;
+                        block = result.data;
+                        console.log(`找到 ${name} 來自 ${result.year}`);
                     } else {
-                        // 沒資料就給空的 (34欄 x 6列)
-                        blockData = Array.from({length:6}, () => Array(34).fill(""));
-                        blockData[2][3] = name; // 填入姓名到 D6 位置
-                        sourceInfo = "(新人員 - 請填寫資料)";
+                        // 建立空白區塊
+                        block = Array.from({length: 6}, () => Array(34).fill(null));
+                        block[2][3] = name; // D6 姓名
                     }
-                    
-                    // 強制更新班別 (B4)
-                    blockData[0][1] = className; 
-
-                    currentDataBlocks.push(blockData);
-                    renderVisualBlock(blockData, sourceInfo);
+                    // 更新班別
+                    block[0][1] = fullClassName; 
+                    masterData.push(block);
+                    renderUI(block);
                 });
             });
         }
 
-        // 繪製視覺化區塊 (高還原 Excel 樣式)
-        function renderVisualBlock(block, info) {
-            const area = document.getElementById('editorArea');
-            const container = document.createElement('div');
-            container.className = 'excel-block';
-            container.innerHTML = `<div class="block-header">講師：${block[2][3]} ${info}</div>`;
+        function renderUI(block) {
+            const div = document.createElement('div');
+            div.className = 'block-preview';
+            div.innerHTML = `<strong>講師：${block[2][3]}</strong> (點擊下格可切換 V)`;
+            
+            // 簡化預覽：只放勾選區
+            const vZone = document.createElement('div');
+            vZone.style.marginTop = "10px";
+            
+            // 範例：顯示一個切換按鈕來處理 AH4 (第34欄, 第1列) 的勾選
+            const toggleV = (r, c, label) => {
+                const span = document.createElement('span');
+                span.className = 'v-cell' + (block[r][c] === 'V' ? ' v-checked' : '');
+                span.innerText = block[r][c] === 'V' ? 'V' : ' ';
+                span.onclick = () => {
+                    block[r][c] = (block[r][c] === 'V' ? null : 'V');
+                    span.innerText = (block[r][c] === 'V' ? 'V' : ' ');
+                    span.classList.toggle('v-checked');
+                };
+                vZone.appendChild(document.createTextNode(label + ": "));
+                vZone.appendChild(span);
+            };
 
-            const grid = document.createElement('div');
-            grid.className = 'grid-container';
-
-            // 遍歷 6x34 個格子
-            for (let r = 0; r < 6; r++) {
-                for (let c = 0; c < 34; c++) {
-                    const cell = document.createElement('div');
-                    cell.className = 'cell';
-                    let val = block[r][c] || "";
-                    cell.innerText = val;
-
-                    // 定義「V 勾選區」(根據你的座標轉換為 0-indexed)
-                    // G4:H7 -> r0-3, c6-7
-                    // N7:AA9 -> r3-5, c13-26
-                    // AC4:AC9 -> r0-5, c28
-                    // AE4:AE9 -> r0-5, c30
-                    // AH4:AH9 -> r0-5, c33
-                    const isVZone = (c >= 6 && c <= 7 && r <= 3) || 
-                                    (c >= 13 && c <= 26 && r >= 3) ||
-                                    (c == 28) || (c == 30) || (c == 33);
-
-                    if (isVZone) {
-                        cell.classList.add('v-zone');
-                        cell.onclick = () => {
-                            block[r][c] = (block[r][c] === "V") ? "" : "V";
-                            cell.innerText = block[r][c];
-                        };
-                    } else if (c == 9 || c == 10) { // 假設通訊地址和電話在這些欄位
-                        cell.classList.add('editable');
-                        cell.onclick = () => {
-                            let newVal = prompt("請輸入新資料：", cell.innerText);
-                            if (newVal !== null) {
-                                block[r][c] = newVal;
-                                cell.innerText = newVal;
-                            }
-                        };
-                    }
-                    grid.appendChild(cell);
-                }
-            }
-            container.appendChild(grid);
-            area.appendChild(container);
+            toggleV(0, 33, "現任班別(AH4)"); // 舉例
+            div.appendChild(vZone);
+            document.getElementById('displayArea').appendChild(div);
         }
 
-        async function exportExcel() {
-            if (currentDataBlocks.length === 0) return alert("沒有資料可匯出");
-
+        async function exportFinalExcel() {
             const res = await fetch('template.xlsx');
             const buf = await res.arrayBuffer();
-            const wb = XLSX.read(buf);
-            const ws = wb.Sheets[wb.SheetNames[0]];
+            const wb = new ExcelJS.Workbook();
+            await wb.xlsx.load(buf);
+            const sheet = wb.getWorksheet(1);
 
-            // 逐一將區塊填入 template (從第 4 列開始)
-            currentDataBlocks.forEach((block, index) => {
-                const startRow = 3 + (index * 6); // Excel index
-                XLSX.utils.sheet_add_json(ws, block, { origin: {r: startRow, c: 0}, skipHeader: true });
+            // 從第 4 列開始填入
+            masterData.forEach((block, index) => {
+                const startRow = 4 + (index * 6);
+                for (let r = 0; r < 6; r++) {
+                    for (let c = 0; c < 34; c++) {
+                        // 關鍵：只填值，不改格式
+                        if (block[r][c] !== null) {
+                            sheet.getRow(startRow + r).getCell(c + 1).value = block[r][c];
+                        }
+                    }
+                }
             });
 
-            XLSX.writeFile(wb, `115年整理後講師表.xlsx`);
+            const outBuf = await wb.xlsx.writeBuffer();
+            const blob = new Blob([outBuf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = "115年度資料整理匯出.xlsx";
+            link.click();
         }
     </script>
 </body>
