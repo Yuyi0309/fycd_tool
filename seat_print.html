@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>座位牌快速套印工具 (性別分類版)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* A4 直式佈局樣式定義 */
+        const printStyles = `
+            @page { size: A4 portrait; margin: 0; }
+            body { margin: 0; padding: 0; font-family: "Microsoft JhengHei", "Heiti TC", sans-serif; background: #fff; }
+            .page { 
+                width: 210mm; 
+                min-height: 297mm; 
+                padding: 10mm 7mm; 
+                box-sizing: border-box; 
+                page-break-after: always; 
+                background: white;
+            }
+            .print-grid {
+                display: grid;
+                grid-template-columns: repeat(2, 1fr);
+                grid-auto-rows: 68mm;
+                border-top: 0.5pt solid #000;
+                border-left: 0.5pt solid #000;
+            }
+            .card-container {
+                border-right: 0.5pt solid #000;
+                border-bottom: 0.5pt solid #000;
+                display: flex;
+                flex-direction: column;
+                justify-content: space-between;
+                align-items: center;
+                padding: 8mm 5mm;
+                box-sizing: border-box;
+                overflow: hidden;
+            }
+            .label-text { font-size: 22pt; font-weight: bold; line-height: 1; text-align: center; }
+            .name-text { font-size: 62pt; font-weight: 900; line-height: 1; letter-spacing: 0.05em; text-align: center; white-space: nowrap; }
+            .name-small { font-size: 52pt; letter-spacing: 0; }
+            .group-text { font-size: 18pt; font-weight: bold; width: 100%; text-align: left; padding-left: 5mm; line-height: 1; }
+        `;
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+
+    <div class="no-print p-6 max-w-4xl mx-auto">
+        <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
+            <h1 class="text-2xl font-bold mb-4 text-blue-700">🪪 座位牌快速套印系統 (性別分類列印)</h1>
+            <p class="text-gray-600 mb-4">請貼上 Excel 內容。您可以選擇分開列印乾道或坤道，以便更換不同顏色的紙張。</p>
+            
+            <textarea id="dataInput" class="w-full h-40 p-4 border rounded-lg font-mono text-sm mb-4 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="姓名	性別..."></textarea>
+            
+            <div class="flex flex-wrap gap-3">
+                <button onclick="generatePrint('all')" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-bold shadow-md transition">
+                    🚀 全部列印 (自動分頁)
+                </button>
+                <button onclick="generatePrint('乾')" class="bg-orange-500 hover:bg-orange-600 text-white px-6 py-3 rounded-lg font-bold shadow-md transition">
+                    ♂ 僅列印乾道
+                </button>
+                <button onclick="generatePrint('坤')" class="bg-pink-500 hover:bg-pink-600 text-white px-6 py-3 rounded-lg font-bold shadow-md transition">
+                    ♀ 僅列印坤道
+                </button>
+                <button id="clearBtn" class="bg-gray-200 hover:bg-gray-300 text-gray-700 px-6 py-3 rounded-lg font-semibold transition">
+                    清空
+                </button>
+            </div>
+            
+            <div class="mt-6 p-4 bg-blue-50 border-l-4 border-blue-400 text-blue-800 text-sm">
+                <p class="font-bold">💡 列印技巧：</p>
+                <ul class="list-disc ml-5 mt-2 space-y-1">
+                    <li><b>更換色紙</b>：若要分顏色，請先點擊「僅列印乾道」，放藍色紙；印完後再點「僅列印坤道」，放粉紅色紙。</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const printStylesStr = `
+            @page { size: A4 portrait; margin: 0; }
+            body { margin: 0; padding: 0; font-family: "Microsoft JhengHei", "Heiti TC", sans-serif; background: #fff; }
+            .page { 
+                width: 210mm; 
+                min-height: 297mm; 
+                padding: 10mm 7mm; 
+                box-sizing: border-box; 
+                page-break-after: always; 
+                background: white;
+            }
+            .print-grid {
+                display: grid;
+                grid-template-columns: repeat(2, 1fr);
+                grid-auto-rows: 68mm;
+                border-top: 0.5pt solid #000;
+                border-left: 0.5pt solid #000;
+            }
+            .card-container {
+                border-right: 0.5pt solid #000;
+                border-bottom: 0.5pt solid #000;
+                display: flex;
+                flex-direction: column;
+                justify-content: space-between;
+                align-items: center;
+                padding: 8mm 5mm;
+                box-sizing: border-box;
+                overflow: hidden;
+            }
+            .label-text { font-size: 22pt; font-weight: bold; line-height: 1; text-align: center; }
+            .name-text { font-size: 62pt; font-weight: 900; line-height: 1; letter-spacing: 0.05em; text-align: center; white-space: nowrap; }
+            .name-small { font-size: 52pt; letter-spacing: 0; }
+            .group-text { font-size: 18pt; font-weight: bold; width: 100%; text-align: left; padding-left: 5mm; line-height: 1; }
+        `;
+
+        function generatePrint(filterType) {
+            const input = document.getElementById('dataInput').value.trim();
+            if (!input) {
+                alert("請先貼上內容！");
+                return;
+            }
+
+            const lines = input.split('\n');
+            const headers = lines[0].split('\t').map(h => h.trim());
+            const nameIdx = headers.indexOf('姓名');
+            const genderIdx = headers.indexOf('性別');
+
+            if (nameIdx === -1) {
+                alert("找不到「姓名」欄位。");
+                return;
+            }
+
+            let allData = lines.slice(1).map(line => {
+                const values = line.split('\t');
+                return {
+                    name: (values[nameIdx] || "").trim(),
+                    gender: genderIdx !== -1 ? (values[genderIdx] || "").trim() : ""
+                };
+            }).filter(item => item.name !== "");
+
+            // 根據按鈕過濾資料
+            let finalDataGroups = [];
+            if (filterType === '乾') {
+                finalDataGroups.push(allData.filter(d => d.gender.includes('乾')));
+            } else if (filterType === '坤') {
+                finalDataGroups.push(allData.filter(d => d.gender.includes('坤')));
+            } else {
+                // 全部列印：乾坤分開存，確保中間有分頁
+                const male = allData.filter(d => d.gender.includes('乾'));
+                const female = allData.filter(d => d.gender.includes('坤'));
+                if (male.length > 0) finalDataGroups.push(male);
+                if (female.length > 0) finalDataGroups.push(female);
+            }
+
+            if (finalDataGroups.length === 0 || finalDataGroups[0].length === 0) {
+                alert("找不到符合該性別的資料！");
+                return;
+            }
+
+            const printWindow = window.open('', '_blank');
+            let htmlContent = `<html><head><title>座位牌列印</title><style>${printStylesStr}</style></head><body>`;
+
+            // 處理每一組性別（確保乾坤之間絕對分頁）
+            finalDataGroups.forEach(group => {
+                for (let i = 0; i < group.length; i += 8) {
+                    htmlContent += `<div class="page"><div class="print-grid">`;
+                    const items = group.slice(i, i + 8);
+                    
+                    items.forEach(person => {
+                        let genderDisplay = person.gender.includes("乾") ? "乾　道" : (person.gender.includes("坤") ? "坤　道" : person.gender || "　　道");
+                        const nameClass = person.name.length >= 4 ? "name-text name-small" : "name-text";
+                        htmlContent += `
+                            <div class="card-container">
+                                <div class="label-text">${genderDisplay}</div>
+                                <div class="${nameClass}">${person.name}</div>
+                                <div class="group-text">　　　組別：</div>
+                            </div>`;
+                    });
+
+                    // 補滿 8 格避免排版崩潰
+                    if (items.length < 8) {
+                        for (let j = 0; j < (8 - items.length); j++) {
+                            htmlContent += `
+                                <div class="card-container">
+                                    <div class="label-text">　　道</div>
+                                    <div class="name-text"></div>
+                                    <div class="group-text">　　　組別：</div>
+                                </div>`;
+                        }
+                    }
+                    htmlContent += `</div></div>`;
+                }
+            });
+
+            htmlContent += `</body></html>`;
+            printWindow.document.write(htmlContent);
+            printWindow.document.close();
+            setTimeout(() => { printWindow.focus(); }, 500);
+        }
+
+        document.getElementById('clearBtn').addEventListener('click', () => {
+            document.getElementById('dataInput').value = '';
+        });
+
+        window.onload = () => {
+            document.getElementById('dataInput').value = "※將資料匯出貼在這";
+        };
+    </script>
+</body>
+</html>
