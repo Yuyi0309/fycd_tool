@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2026 會議簽到統計系統</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* 全域字體加大 */
+        body {
+            font-size: 1.15rem; /* 大於 18px */
+        }
+
+        /* 列印設定 */
+        @media print {
+            .no-print { display: none !important; }
+            body { background: white; padding: 0; }
+            .print-container { max-width: 100%; width: 100%; padding: 0; margin: 0; }
+            .shadow-sm, .shadow-md, .shadow-xl { box-shadow: none !important; border: 1px solid #ddd; }
+            .print-break { page-break-after: always; }
+            * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        }
+
+        .checked-row { background-color: #dcfce7 !important; }
+        .checkmark { color: #16a34a; font-weight: bold; font-size: 1.5rem; }
+        
+        /* 表格間距與大小調整 */
+        .table-condensed td, .table-condensed th { 
+            padding: 0.8rem 1rem; 
+            border: 1px solid #e2e8f0;
+        }
+        
+        .zebra-row:nth-child(even) { background-color: #f8fafc; }
+        .zebra-row:nth-child(odd) { background-color: #ffffff; }
+
+        /* 特大字體細節控制 */
+        .text-stats-num { font-size: 2.5rem; line-height: 1; }
+        .text-table-content { font-size: 1.2rem; } /* 約 19-20px */
+    </style>
+</head>
+<body class="bg-slate-100 min-h-screen p-2 md:p-6 text-slate-900">
+    <div class="max-w-[1550px] mx-auto print-container">
+        
+        <!-- 操作面板 (列印時隱藏) -->
+        <header class="mb-6 no-print bg-white p-6 rounded-xl shadow-xl border border-slate-200">
+            <h1 class="text-3xl font-bold mb-4 flex items-center gap-2">
+                <span class="bg-blue-600 text-white px-3 py-1 rounded text-xl">2026</span> 會議簽到統計系統
+            </h1>
+            <div class="grid grid-cols-1 gap-4">
+                <textarea id="barcodeInput" class="w-full h-40 p-4 text-base font-mono border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500" placeholder="請在此貼上包含「姓名、佛堂」標題的 Excel 內容..."></textarea>
+                <div class="flex flex-wrap gap-4">
+                    <button id="processBtn" onclick="processAttendance()" class="bg-blue-600 hover:bg-blue-700 text-white px-10 py-3 rounded-lg font-bold shadow-md transition-all text-xl">執行核對</button>
+                    <button id="printBtn" onclick="window.print()" class="bg-slate-700 hover:bg-slate-800 text-white px-8 py-3 rounded-lg transition-all text-xl flex items-center gap-2 shadow-md">
+                        直接列印報表
+                    </button>
+                    <button onclick="resetData()" class="bg-white border border-slate-300 text-slate-600 px-8 py-3 rounded-lg hover:bg-slate-50 text-xl font-medium">清空數據</button>
+                </div>
+            </div>
+        </header>
+
+        <!-- 列印範圍 -->
+        <div id="print-area">
+            <!-- 統計卡片 -->
+            <div class="grid grid-cols-3 gap-6 mb-8">
+                <div class="bg-white p-6 rounded-xl shadow-sm border-t-8 border-blue-500">
+                    <p class="text-base font-bold text-slate-500 mb-2 tracking-widest">應到人次 (名單總計)</p>
+                    <p id="statTotalRequired" class="text-stats-num font-black">0</p>
+                </div>
+                <div class="bg-white p-6 rounded-xl shadow-sm border-t-8 border-green-500">
+                    <p class="text-base font-bold text-slate-500 mb-2 tracking-widest">應到實到 (名單出席)</p>
+                    <p id="statPresentRequired" class="text-stats-num font-black text-green-600">0</p>
+                </div>
+                <div class="bg-white p-6 rounded-xl shadow-sm border-t-8 border-purple-500">
+                    <p class="text-base font-bold text-slate-500 mb-2 tracking-widest">全場總人數 (掃描總計)</p>
+                    <p id="statTotalActual" class="text-stats-num font-black text-purple-600">0</p>
+                </div>
+            </div>
+
+            <!-- 點傳師 與 忠字班 -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+                <!-- 點傳師框 -->
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                    <div class="bg-rose-700 text-white px-6 py-4 text-2xl font-bold tracking-widest text-center">點傳師名單</div>
+                    <table class="w-full text-left border-collapse table-condensed text-table-content">
+                        <thead class="bg-slate-100 font-bold">
+                            <tr>
+                                <th class="border-b">壇名</th>
+                                <th class="border-b">姓名</th>
+                                <th class="border-b text-center">出席</th>
+                            </tr>
+                        </thead>
+                        <tbody id="masterTable_點傳師"></tbody>
+                    </table>
+                </div>
+
+                <!-- 忠字班框 -->
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                    <div class="bg-blue-800 text-white px-6 py-4 text-2xl font-bold tracking-widest text-center">忠字班名單</div>
+                    <table class="w-full text-left border-collapse table-condensed text-table-content">
+                        <thead class="bg-slate-100 font-bold">
+                            <tr>
+                                <th class="border-b">壇名</th>
+                                <th class="border-b">姓名</th>
+                                <th class="border-b text-center">出席</th>
+                            </tr>
+                        </thead>
+                        <tbody id="masterTable_忠字班"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 義字班群 -->
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden mb-8">
+                <div class="bg-slate-800 text-white px-6 py-4 text-2xl font-bold text-center">
+                    公壇負責人 / 道務義字班 / 班務義字班
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse table-condensed text-table-content">
+                        <thead class="bg-slate-100 font-bold">
+                            <tr class="text-slate-700 text-base">
+                                <th class="border-b w-24 bg-orange-100">壇名</th>
+                                <th class="border-b">公壇負責人</th>
+                                <th class="border-b">道務義字班</th>
+                                <th class="border-b border-r">班務義字班</th>
+                                <th class="border-b w-24 bg-orange-100">壇名</th>
+                                <th class="border-b">公壇負責人</th>
+                                <th class="border-b">道務義字班</th>
+                                <th class="border-b">班務義字班</th>
+                            </tr>
+                        </thead>
+                        <tbody id="masterTable_義字班群"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 非預設名單 -->
+            <div id="extraSection" class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden hidden">
+                <div class="bg-orange-600 text-white px-6 py-4 text-2xl font-bold text-center">非預設名單之出席人員 (列入總人數)</div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse table-condensed text-table-content">
+                        <tbody id="extraTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 完全依照您給的名單順序定義數據
+        const mastersList = [
+            { church: "正洪", name: "洪貴香" },
+            { church: "正命", name: "巫金芳" },
+            { church: "正吉", name: "李勝忠" },
+            { church: "正欣", name: "葉德明" },
+            { church: "正菁", name: "張素華" },
+            { church: "正通", name: "林清泉" },
+            { church: "正霖", name: "沈美華" },
+            { church: "正惟", name: "王秀娟" },
+            { church: "正盛", name: "林艾慧" }
+        ];
+
+        const loyalList = [
+            { church: "正承", name: "劉汝香" },
+            { church: "正欣", name: "陳素月" },
+            { church: "正同", name: "林沛諠" },
+            { church: "正合", name: "梁家鳴" },
+            { church: "正路", name: "洪佳堯" },
+            { church: "正霖", name: "蔡文邦" },
+            { church: "正悅", name: "林絲綾" },
+            { church: "正承", name: "余宏彬" },
+            { church: "正持", name: "林秉良" }
+        ];
+
+        const volunteerGroups = [
+            { church: "正承", names: ["余宏彬", "魏士疄", "姚麗英"] },
+            { church: "正禮", names: ["顏綉芸", "何月桃", "雲淑如"] },
+            { church: "正欣", names: ["王雅惠", "陳慧賢", "劉于溱"] },
+            { church: "正傳", names: ["陳坤雄", "蔡美姿", "林明賢"] },
+            { church: "正齊", names: ["梁金聰", "梁金聰", "李賜財"] },
+            { church: "正吉", names: ["薛良奎", "羅時嵩", "洪稚琇"] },
+            { church: "正同", names: ["林沛諠", "何添福", "張凱誼"] },
+            { church: "正通", names: ["吳珮均", "吳珮甄", "蔡淑婷"] },
+            { church: "正霖", names: ["楊滄堯", "廖柚淇", "廖家凰"] },
+            { church: "正照", names: ["陳映雪", "顏麗秀", "黃品鈞"] },
+            { church: "正港", names: ["楊莉蓁", "王昱翔", "阮儀暄"] },
+            { church: "正命", names: ["巫金芳", "陳怡君", "林麗鴛"] },
+            { church: "正路", names: ["洪金益", "洪佳隆", "張玄林"] },
+            { church: "正步", names: ["林春芳", "施連昌", "黃秀英"] },
+            { church: "正沺", names: ["陳宝秀", "陳錦雲", "黃莉芬"] },
+            { church: "正奉", names: ["李穎甄", "陳曉鈴", "康嘉育"] },
+            { church: "正湶", names: ["李雲卿", "李順源", "陳金蓮"] },
+            { church: "正積", names: ["林永寶", "陳嘉榮", "林成懋"] },
+            { church: "正惟", names: ["蕭梨山", "卓宜樺", "趙麗秋"] },
+            { church: "正菁", names: ["張芳萍", "謝宛玲", "陳佳琪"] },
+            { church: "正厚", names: ["陳瑛兒", "許家銘", "李芷懿"] },
+            { church: "正願", names: ["洪裕嘉", "張瓊惠", "施博生"] },
+            { church: "正師", names: ["陳姿穎", "郭宥禾", "鍾昀青"] },
+            { church: "正合", names: ["梁家鳴", "魏淑花", "李沛宸"] },
+            { church: "正洪", names: ["洪貴香", "洪美淑", "陳鈺頷"] },
+            { church: "正湖", names: ["林水湖", "林妡綸", "何佳倫"] },
+            { church: "正宥", names: ["陳 燕", "陳姿伊", "陳文政"] },
+            { church: "正漢", names: ["林漢文", "江麗珍", "張順婷"] },
+            { church: "正嶺", names: ["許淑玲", "洪巧融", "林嘉莉"] },
+            { church: "正盛", names: ["林砡鋒", "林士媛", "余家承"] },
+            { church: "正六", names: ["張碧蘭", "鄭祥", "黃柏勳"] },
+            { church: "正持", names: ["楊采玲", "柯鈺斐", "黃鈺純"] },
+            { church: "正薰", names: ["鄭純蓉", "簡嘉成", "蔡語蓁"] },
+            { church: "正洲", names: ["陳南州", "林銘珍", "洪淑惠"] },
+            { church: "正悅", names: ["林絲綾", "陳泓志", "楊惠玲"] },
+            { church: "正楷", names: ["覃玉美", "王翠月", "王盈棋"] }
+        ];
+
+        let attendanceData = [];
+
+        function initData() {
+            attendanceData = [];
+            // 點傳師
+            mastersList.forEach(p => {
+                attendanceData.push({ church: p.church, role: "點傳師", name: p.name.trim(), present: false });
+            });
+            // 忠字班
+            loyalList.forEach(p => {
+                attendanceData.push({ church: p.church, role: "忠字班", name: p.name.trim(), present: false });
+            });
+            // 義字班群
+            volunteerGroups.forEach(item => {
+                const subRoles = ["公壇負責人", "道務義字班", "班務義字班"];
+                item.names.forEach((name, idx) => {
+                    attendanceData.push({ church: item.church, role: subRoles[idx], name: name.trim(), present: false });
+                });
+            });
+            renderAll();
+        }
+
+        function renderAll() {
+            // 1. 點傳師名單顯示
+            const masterTbody = document.getElementById(`masterTable_點傳師`);
+            masterTbody.innerHTML = '';
+            attendanceData.filter(p => p.role === "點傳師").forEach(p => {
+                const tr = document.createElement('tr');
+                tr.className = p.present ? 'checked-row font-bold' : 'zebra-row';
+                tr.innerHTML = `<td>${p.church}</td><td class="font-bold">${p.name}</td><td class="text-center">${p.present ? '<span class="checkmark">V</span>' : '<span class="text-slate-200">─</span>'}</td>`;
+                masterTbody.appendChild(tr);
+            });
+
+            // 2. 忠字班名單顯示
+            const loyalTbody = document.getElementById(`masterTable_忠字班`);
+            loyalTbody.innerHTML = '';
+            attendanceData.filter(p => p.role === "忠字班").forEach(p => {
+                const tr = document.createElement('tr');
+                tr.className = p.present ? 'checked-row font-bold' : 'zebra-row';
+                tr.innerHTML = `<td>${p.church}</td><td class="font-bold">${p.name}</td><td class="text-center">${p.present ? '<span class="checkmark">V</span>' : '<span class="text-slate-200">─</span>'}</td>`;
+                loyalTbody.appendChild(tr);
+            });
+
+            // 3. 義字班群顯示 (維持雙欄，但依名單順序)
+            const groupTbody = document.getElementById('masterTable_義字班群');
+            groupTbody.innerHTML = '';
+            for (let i = 0; i < volunteerGroups.length; i += 2) {
+                const tr = document.createElement('tr');
+                tr.className = 'zebra-row';
+                let rowHtml = '';
+                [volunteerGroups[i], volunteerGroups[i+1]].forEach(item => {
+                    if (!item) { rowHtml += `<td colspan="4"></td>`; return; }
+                    const people = attendanceData.filter(p => p.church === item.church && ["公壇負責人", "道務義字班", "班務義字班"].includes(p.role));
+                    const l = people.find(p => p.role === "公壇負責人");
+                    const d = people.find(p => p.role === "道務義字班");
+                    const b = people.find(p => p.role === "班務義字班");
+                    rowHtml += `
+                        <td class="font-bold border-r bg-orange-100">${item.church}</td>
+                        <td class="${l?.present ? 'checked-row' : ''}">${l ? formatCell(l) : ''}</td>
+                        <td class="${d?.present ? 'checked-row' : ''}">${d ? formatCell(d) : ''}</td>
+                        <td class="border-r ${b?.present ? 'checked-row' : ''}">${b ? formatCell(b) : ''}</td>
+                    `;
+                });
+                tr.innerHTML = rowHtml;
+                groupTbody.appendChild(tr);
+            }
+            updateStats();
+        }
+
+        function formatCell(p) {
+            return `<div class="flex justify-between items-center w-full px-1">
+                        <span class="${p.present ? 'font-bold' : ''}">${p.name}</span>
+                        ${p.present ? '<span class="checkmark">V</span>' : ''}
+                    </div>`;
+        }
+
+        function processAttendance() {
+            const rawText = document.getElementById('barcodeInput').value.trim();
+            if (!rawText) return;
+            const lines = rawText.split('\n');
+            const header = lines[0].split('\t');
+            const nameIdx = header.indexOf('姓名');
+            const churchIdx = header.indexOf('佛堂');
+            if (nameIdx === -1) return alert("錯誤：資料中找不到「姓名」標題列！");
+
+            attendanceData.forEach(p => p.present = false);
+            const actualTotalSet = new Set();
+            const extra = [];
+
+            for (let i = 1; i < lines.length; i++) {
+                const row = lines[i].split('\t');
+                if (row.length <= nameIdx) continue;
+                const name = row[nameIdx].trim();
+                const church = churchIdx !== -1 ? row[churchIdx].trim() : "未知";
+                if(!name) continue;
+                actualTotalSet.add(name);
+                
+                let matched = false;
+                attendanceData.forEach(p => {
+                    if (p.name === name) { p.present = true; matched = true; }
+                });
+                if (!matched) extra.push({ name, church });
+            }
+
+            renderAll();
+            renderExtra(extra);
+            updateStats(actualTotalSet.size);
+            
+            const btn = document.getElementById('processBtn');
+            btn.innerText = "核對成功！";
+            btn.classList.replace('bg-blue-600', 'bg-green-600');
+            setTimeout(() => {
+                btn.innerText = "執行核對";
+                btn.classList.replace('bg-green-600', 'bg-blue-600');
+            }, 2000);
+        }
+
+        function renderExtra(extraList) {
+            const sec = document.getElementById('extraSection');
+            const tbody = document.getElementById('extraTableBody');
+            if (extraList.length === 0) return sec.classList.add('hidden');
+            sec.classList.remove('hidden');
+            tbody.innerHTML = '';
+            
+            const uniqueExtra = [];
+            const seen = new Set();
+            extraList.forEach(e => { if(!seen.has(e.name)){ uniqueExtra.push(e); seen.add(e.name); } });
+            
+            for (let i = 0; i < uniqueExtra.length; i += 3) {
+                const tr = document.createElement('tr');
+                tr.className = 'zebra-row';
+                let rowHtml = '';
+                for (let j = 0; j < 3; j++) {
+                    const p = uniqueExtra[i + j];
+                    if (p) {
+                        rowHtml += `<td class="px-6 py-5 border-r">
+                                        <span class="text-slate-400 text-sm mr-2">[${p.church}]</span> 
+                                        <span class="font-bold">${p.name}</span> 
+                                        <span class="checkmark ml-3">V</span>
+                                    </td>`;
+                    } else { rowHtml += `<td class="border-r"></td>`; }
+                }
+                tr.innerHTML = rowHtml;
+                tbody.appendChild(tr);
+            }
+        }
+
+        function updateStats(actualTotal = 0) {
+            document.getElementById('statTotalRequired').innerText = attendanceData.length;
+            document.getElementById('statPresentRequired').innerText = attendanceData.filter(p => p.present).length;
+            if (actualTotal > 0) document.getElementById('statTotalActual').innerText = actualTotal;
+        }
+
+        function resetData() {
+            if(confirm("確定要重置所有簽到狀態嗎？")){
+                document.getElementById('barcodeInput').value = '';
+                initData();
+                document.getElementById('extraSection').classList.add('hidden');
+                document.getElementById('statTotalActual').innerText = "0";
+            }
+        }
+
+        window.onload = initData;
+    </script>
+</body>
+</html>
