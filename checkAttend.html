@@ -1,538 +1,573 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>2026 會議簽到統計系統</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        body { font-size: 1.15rem; }
+<meta charset="UTF-8">
+<title>2026 會議簽到統計系統</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+/* ══════════════════════════════════════════════════════════════
+   全域
+   ══════════════════════════════════════════════════════════════ */
+body { font-size:1rem; background:#f1f5f9; }
+.stat-num { font-size:2.2rem; font-weight:900; line-height:1; }
 
-        /* ===== 列印設定 ===== */
-        @media print {
-            .no-print { display: none !important; }
-            body { background: white; padding: 0; margin: 0; }
-            .print-container { max-width: 100%; width: 100%; padding: 0; margin: 0; }
-            .shadow-sm, .shadow-md, .shadow-xl { box-shadow: none !important; }
-            * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+/* ══════════════════════════════════════════════════════════════
+   【螢幕版 共用 grid-row 元件】
+   .g-row     = 一列（display:flex）
+   .g-cell    = 一格（預設文字大小、padding、置中對齊）
+   .g-head    = 標題列底色
+   .g-odd/even = 斑馬底色
+   .g-hit     = 已出席（綠底，!important 蓋過斑馬）
+   ══════════════════════════════════════════════════════════════ */
+.g-row   { display:flex; border-bottom:1px solid #d1d5db; }
+.g-row:last-child { border-bottom:none; }
+.g-cell  { padding:6px 5px; overflow:hidden; white-space:nowrap;
+           display:flex; align-items:center; justify-content:center;
+           border-right:1px solid #d1d5db; box-sizing:border-box; }
+.g-cell:last-child { border-right:none; }
+.g-head  { background:#f1f5f9; font-weight:700; color:#374151; }
+.g-odd   { background:#ffffff; }
+.g-even  { background:#f8fafc; }
+.g-hit   { background:#dcfce7 !important; }
 
-            /* 每個區塊獨立分頁 */
-            #page1 { page-break-before: avoid; page-break-after: always; }
-            #page2 { page-break-before: always; page-break-after: always; }
-            #page3 { page-break-before: always; page-break-after: always; }
-            #page4 { page-break-before: always; page-break-after: always; }
-            #page5 { page-break-before: always; page-break-after: auto; }
+/* ══════════════════════════════════════════════════════════════
+   【螢幕版 PAGE 1：點傳師 + 忠字班】
+   ── 調整說明 ──
+   .p1-wrap / .p1-half：左右並排容器，不用動
+   .p1-church  欄寬 → 改 width
+   .p1-name    欄寬 → 改 width
+   .p1-att     欄寬 → 改 width
+   .p1-cell    文字大小 → 改 font-size
+               格子間距 → 改 padding
+   ══════════════════════════════════════════════════════════════ */
+.p1-wrap  { display:flex; gap:12px; }
+.p1-half  { flex:1 1 0; min-width:0; }
+.p1-grid  { border:1px solid #d1d5db; border-radius:0 0 8px 8px; overflow:hidden; }
 
-            /* 義字班群列印 */
-            #page3 .yi-table { table-layout: fixed; width: 100%; }
-            #page3 .yi-table th,
-            #page3 .yi-table td {
-                overflow: hidden; white-space: nowrap;
-                padding: 5px 7px; font-size: 15px;
-                border: 1px solid #ccc;
-            }
-            #page3 .yi-table td.church-col {
-                width: 7%; background-color: #fff7ed !important;
-                font-weight: bold; text-align: center;
-            }
-            #page3 .checkmark { font-size: 11px !important; }
+/* 螢幕版 P1 欄寬 */
+.p1-church { width:90px;  flex:0 0 90px;  }  /* ← 【螢幕 P1 壇名欄寬】px */
+.p1-name   { flex:1 1 0;   min-width:0;     }  /* ← 【螢幕 P1 姓名欄寬】flex 自動填滿 */
+.p1-att    { width:90px;   flex:0 0 90px;   }  /* ← 【螢幕 P1 出席欄寬】px */
 
-            /* 負責講師列印 */
-            #page4 .lect-table { table-layout: fixed; width: 100%; }
-            #page4 .lect-table th,
-            #page4 .lect-table td {
-                overflow: hidden; white-space: nowrap;
-                padding: 5px 7px; font-size: 15px;
-                border: 1px solid #ccc;
-            }
+/* 螢幕版 P1 文字大小與格子間距 */
+.p1-cell {
+    font-size:1.5rem;   /* ← 【螢幕 P1 文字大小】 */
+    padding:8px 5px;    /* ← 【螢幕 P1 格子間距】上下 / 左右 */
+}
 
-            /* 非預設名單列印 */
-            .extra-td { font-size: 13px; padding: 4px 10px !important; }
+/* ══════════════════════════════════════════════════════════════
+   【螢幕版 PAGE 2：義字班】
+   左右各 4 欄（壇名＋三角色），中間一條粗分隔線
+   ── 調整說明 ──
+   .yi-church  壇名欄寬 → 改 width / flex
+   .yi-role    角色欄寬 → 改 flex（三個角色欄平均分配剩餘空間）
+   .yi-sep     中間分隔線粗細/顏色 → 改 border-right
+   .yi-cell    文字大小 → 改 font-size
+               格子間距 → 改 padding
+   .yi-ok      ○ 與名字間距 → 改 margin-left
+               ○ 大小       → 改 font-size
+   ══════════════════════════════════════════════════════════════ */
+.yi-grid   { border:1px solid #d1d5db; overflow:hidden; }
+.yi-church { width:72px; flex:0 0 72px; background:#fff7ed; font-weight:700; justify-content:center; } /* ← 【螢幕 P2 壇名欄寬】 */
+.yi-role   { flex:1 1 0; min-width:0; }  /* ← 【螢幕 P2 角色欄寬】三欄均分剩餘空間 */
+.yi-sep    { border-right:3px solid #94a3b8 !important; } /* ← 左半最後一欄右側粗線 */
 
-            .checkmark { color: #16a34a !important; font-weight: bold; }
-        }
+/* 螢幕版 P2 文字大小與格子間距 */
+.yi-cell {
+    font-size:1.3rem;  /* ← 【螢幕 P2 文字大小】 */
+    padding:9px 4px;    /* ← 【螢幕 P2 格子間距】上下 / 左右 */
+}
+/* 螢幕版 P2 ○ 符號 */
+.yi-ok {
+    color:#16a34a; font-weight:700;
+    margin-left:3px;    /* ← 【螢幕 P2 名字與○間距】 */
+    font-size:1.1em;    /* ← 【螢幕 P2 ○ 大小】em=相對同格文字 */
+}
 
-        /* ===== 螢幕樣式 ===== */
-        .checked-row { background-color: #dcfce7 !important; }
-        .checkmark { color: #16a34a; font-weight: bold; font-size: 1rem; }
+/* ══════════════════════════════════════════════════════════════
+   【螢幕版 PAGE 3：負責講師】
+   ── 調整說明 ──
+   .lc-unit    公/分欄寬 → 改 width / flex
+   .lc-area    班別欄寬 → 改 width / flex
+   .lc-altar   地點欄寬 → 改 width / flex
+   .lc-names   講師名單欄 → flex:1 1 0 自動填滿，不用動
+   .lc-cell    文字大小 → 改 font-size
+               格子間距 → 改 padding
+   .lect-chip  講師名字大小  → 改 font-size
+               講師名字間距  → 改 margin-right
+   .lect-ok    ○ 與名字間距 → 改 margin-left
+               ○ 大小       → 改 font-size
+   ══════════════════════════════════════════════════════════════ */
+.lc-grid  { border:1px solid #d1d5db; overflow:hidden; }
+.lc-unit  { width:80px;  flex:0 0 80px;  justify-content:center; }  /* ← 【螢幕 P3 公/分欄寬】 */
+.lc-area  { width:80px;  flex:0 0 80px;  justify-content:center; }  /* ← 【螢幕 P3 班別欄寬】 */
+.lc-altar { width:110px; flex:0 0 110px; justify-content:center; }  /* ← 【螢幕 P3 地點欄寬】 */
+.lc-names { flex:1 1 0; min-width:0; flex-wrap:wrap; white-space:normal; align-items:center; justify-content:flex-start; } /* 自動填滿 */
 
-        .table-condensed td, .table-condensed th {
-            padding: 0.75rem 1rem; border: 1px solid #e2e8f0;
-        }
-        .zebra-row:nth-child(even) { background-color: #f8fafc; }
-        .zebra-row:nth-child(odd)  { background-color: #ffffff; }
-        .text-stats-num { font-size: 2.5rem; line-height: 1; }
+/* 螢幕版 P3 文字大小與格子間距 */
+.lc-cell {
+    font-size:1.12rem;  /* ← 【螢幕 P3 格子文字大小】（公/分、班別、地點） */
+    padding:7px 5px;    /* ← 【螢幕 P3 格子間距】上下 / 左右 */
+}
+/* 螢幕版 P3 講師名字 chip */
+.lect-chip {
+    display:inline-block;
+    font-size:1.5rem;   /* ← 【螢幕 P3 講師姓名大小】 */
+    margin-right:2em;   /* ← 【螢幕 P3 講師姓名間距】 */
+    white-space:nowrap;
+}
+/* 螢幕版 P3 ○ 符號 */
+.lect-ok {
+    color:#16a34a; font-weight:700;
+    margin-left:2px;    /* ← 【螢幕 P3 名字與○間距】 */
+    font-size:0.85em;   /* ← 【螢幕 P3 ○ 大小】 */
+}
 
-        /* 義字班群 */
-        .yi-table { table-layout: fixed; width: 100%; }
-        .yi-table th, .yi-table td { overflow: hidden; white-space: nowrap; }
-        .yi-table td.church-col {
-            width: 6%; background-color: #fff7ed;
-            font-weight: bold; text-align: center;
-        }
+/* ══════════════════════════════════════════════════════════════
+   【列印樣式 @media print】
+   ★ 原則：所有列印數值一律用「px」，與螢幕版完全無關。
+     螢幕版改什麼都不會影響列印；列印版改什麼都不影響螢幕。
+   ══════════════════════════════════════════════════════════════ */
+@media print {
+    .no-print { display:none !important; }
+    body { background:white; padding:0; margin:0; }
+    .print-wrap { max-width:100%; width:100%; padding:0; margin:0; }
+    * { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+    .shadow-sm, .shadow-xl, .rounded-xl { box-shadow:none !important; }
+    #page1 { page-break-before:avoid; page-break-after:always; }
+    #page2 { page-break-before:always; page-break-after:always; }
+    #page3 { page-break-before:always; page-break-after:always; }
+    #page4 { page-break-before:always; page-break-after:auto;   }
 
-        /* 負責講師表 */
-        .lect-table { table-layout: fixed; width: 100%; }
-        .lect-table th, .lect-table td { overflow: hidden; white-space: nowrap; }
-        .lect-table td.lect-unit { background-color: #eff6ff; font-weight: bold; text-align: center; }
-        .lect-table td.lect-altar { background-color: #f0fdf4; font-weight: bold; }
+    /* ── 列印版 共用 row/cell 基底 ──
+       螢幕版的 rem 全部在此被 px 蓋掉               */
+    .g-cell { padding:0; font-size:0; } /* 先清零，各頁再個別設定 */
 
-        /* 分班字色 */
-        .unit-fenban { color: #1d4ed8; font-weight: bold; }
-    </style>
+    /* ──────────────────────────────────────────────
+       【列印版 PAGE 1：點傳師 + 忠字班】
+       【列印 P1 文字大小】→ 改 .p1-cell font-size（px）
+       【列印 P1 格子間距】→ 改 .p1-cell padding（上下px 左右px）
+       【列印 P1 壇名欄寬】→ 改 .p1-church width + flex-basis（px）
+       【列印 P1 出席欄寬】→ 改 .p1-att   width + flex-basis（px）
+       【列印 P1 姓名欄寬】→ .p1-name flex:1 1 0 自動填滿，不用動
+    ────────────────────────────────────────────── */
+    .p1-wrap  { display:flex; gap:6px; }
+    .p1-half  { flex:1 1 0; min-width:0; }
+    .p1-cell {
+        font-size:20px;   /* ← 【列印 P1 文字大小】 */
+        padding:12px 3px; /* ← 【列印 P1 格子間距】上下 / 左右 */
+    }
+    .p1-church { width:90px;  flex:0 0 90px;  } /* ← 【列印 P1 壇名欄寬】 */
+    .p1-att    { width:42px;  flex:0 0 60px;  } /* ← 【列印 P1 出席欄寬】 */
+
+    /* ──────────────────────────────────────────────
+       【列印版 PAGE 2：義字班】
+       【列印 P2 文字大小】→ 改 .yi-cell font-size（px）
+       【列印 P2 格子間距】→ 改 .yi-cell padding（上下px 左右px）
+       【列印 P2 壇名欄寬】→ 改 .yi-church width + flex-basis（px）
+       【列印 P2 名字與○間距】→ 改 .yi-ok margin-left（px）
+       【列印 P2 ○ 大小】   → 改 .yi-ok font-size（px）
+    ────────────────────────────────────────────── */
+    .yi-cell {
+        font-size:18px;  /* ← 【列印 P2 文字大小】 */
+        padding:9px 3px; /* ← 【列印 P2 格子間距】上下 / 左右 */
+    }
+    .yi-church { width:56px; flex:0 0 56px; } /* ← 【列印 P2 壇名欄寬】 */
+    .yi-ok {
+        margin-left:2px; /* ← 【列印 P2 名字與○間距】 */
+        font-size:16px;  /* ← 【列印 P2 ○ 大小】 */
+    }
+
+    /* ──────────────────────────────────────────────
+       【列印版 PAGE 3：負責講師】
+       【列印 P3 格子文字大小】→ 改 .lc-cell font-size（px）
+       【列印 P3 格子間距】   → 改 .lc-cell padding（上下px 左右px）
+       【列印 P3 公/分欄寬】  → 改 .lc-unit width + flex-basis（px）
+       【列印 P3 班別欄寬】   → 改 .lc-area width + flex-basis（px）
+       【列印 P3 地點欄寬】   → 改 .lc-altar width + flex-basis（px）
+       【列印 P3 講師姓名大小】→ 改 .lect-chip font-size（px）
+       【列印 P3 講師姓名間距】→ 改 .lect-chip margin-right（px）
+       【列印 P3 名字與○間距】→ 改 .lect-ok margin-left（px）
+       【列印 P3 ○ 大小】     → 改 .lect-ok font-size（px）
+    ────────────────────────────────────────────── */
+    .lc-cell {
+        font-size:18px;  /* ← 【列印 P3 格子文字大小】 */
+        padding:4px 3px; /* ← 【列印 P3 格子間距】上下 / 左右 */
+    }
+    .lc-unit  { width:60px;  flex:0 0 60px;  } /* ← 【列印 P3 公/分欄寬】 */
+    .lc-area  { width:60px;  flex:0 0 60px;  } /* ← 【列印 P3 班別欄寬】 */
+    .lc-altar { width:100px; flex:0 0 100px; } /* ← 【列印 P3 地點欄寬】 */
+    .lect-chip {
+        font-size:19px;    /* ← 【列印 P3 講師姓名大小】 */
+        margin-right:16px; /* ← 【列印 P3 講師姓名間距】 */
+    }
+    .lect-ok {
+        margin-left:2px;  /* ← 【列印 P3 名字與○間距】 */
+        font-size:17px;   /* ← 【列印 P3 ○ 大小】 */
+    }
+    /* PAGE 4 extra 格子 */
+    .ex-cell {
+        font-size:18px;
+        padding:6px 8px;
+    }
+}
+</style>
 </head>
-<body class="bg-slate-100 min-h-screen p-2 md:p-6 text-slate-900">
-<div class="max-w-[1600px] mx-auto print-container">
+<body class="min-h-screen p-2 md:p-5">
+<div class="max-w-[1500px] mx-auto print-wrap">
 
-    <!-- 操作面板 -->
-    <header class="mb-6 no-print bg-white p-6 rounded-xl shadow-xl border border-slate-200">
-        <h1 class="text-3xl font-bold mb-4 flex items-center gap-2">
-            <span class="bg-blue-600 text-white px-3 py-1 rounded text-xl">2026</span> 會議簽到統計系統
-        </h1>
-        <div class="grid grid-cols-1 gap-4">
-            <textarea id="barcodeInput" class="w-full h-40 p-4 text-base font-mono border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                placeholder="請在此貼上包含「姓名、佛堂」標題的 Excel 內容..."></textarea>
-            <div class="flex flex-wrap gap-4">
-                <button id="processBtn" onclick="processAttendance()"
-                    class="bg-blue-600 hover:bg-blue-700 text-white px-10 py-3 rounded-lg font-bold shadow-md transition-all text-xl">執行核對</button>
-                <button onclick="window.print()"
-                    class="bg-slate-700 hover:bg-slate-800 text-white px-8 py-3 rounded-lg transition-all text-xl shadow-md">直接列印報表</button>
-                <button onclick="resetData()"
-                    class="bg-white border border-slate-300 text-slate-600 px-8 py-3 rounded-lg hover:bg-slate-50 text-xl font-medium">清空數據</button>
-            </div>
+<!-- ── 操作區 ── -->
+<header class="no-print mb-5 bg-white p-5 rounded-xl shadow-xl border border-slate-200">
+    <h1 class="text-2xl font-bold mb-3 flex items-center gap-2">
+        <span class="bg-blue-600 text-white px-2 py-1 rounded text-lg">2026</span> 會議簽到統計系統
+    </h1>
+    <textarea id="barcodeInput" class="w-full h-36 p-3 text-sm font-mono border border-slate-300 rounded-lg mb-3"
+        placeholder="請在此貼上包含「姓名、佛堂」標題的 Excel 內容..."></textarea>
+    <div class="flex flex-wrap gap-3">
+        <button id="processBtn" onclick="processAttendance()"
+            class="bg-blue-600 hover:bg-blue-700 text-white px-8 py-2 rounded-lg font-bold text-lg shadow">執行核對</button>
+        <button onclick="window.print()"
+            class="bg-slate-700 hover:bg-slate-800 text-white px-6 py-2 rounded-lg text-lg shadow">列印報表</button>
+        <button onclick="resetData()"
+            class="bg-white border border-slate-300 text-slate-600 px-6 py-2 rounded-lg text-lg hover:bg-slate-50">清空數據</button>
+    </div>
+</header>
+
+<!-- ══════════ PAGE 1：點傳師 + 忠字班 ══════════ -->
+<div id="page1">
+    <!-- 統計三格 -->
+    <div class="grid grid-cols-3 gap-3 mb-4">
+        <div class="bg-white p-4 rounded-xl border-t-8 border-blue-500 shadow-sm">
+            <p class="text-xs font-bold text-slate-500 mb-1">應到人次（名單總計）</p>
+            <p id="statTotal" class="stat-num">0</p>
         </div>
-    </header>
-
-    <div id="print-area">
-
-        <!-- ===== 第一頁：統計 + 點傳師 ===== -->
-        <div id="page1">
-            <div class="grid grid-cols-3 gap-6 mb-8">
-                <div class="bg-white p-6 rounded-xl shadow-sm border-t-8 border-blue-500">
-                    <p class="text-base font-bold text-slate-500 mb-2 tracking-widest">應到人次 (名單總計)</p>
-                    <p id="statTotalRequired" class="text-stats-num font-black">0</p>
-                </div>
-                <div class="bg-white p-6 rounded-xl shadow-sm border-t-8 border-green-500">
-                    <p class="text-base font-bold text-slate-500 mb-2 tracking-widest">應到實到 (名單出席)</p>
-                    <p id="statPresentRequired" class="text-stats-num font-black text-green-600">0</p>
-                </div>
-                <div class="bg-white p-6 rounded-xl shadow-sm border-t-8 border-purple-500">
-                    <p class="text-base font-bold text-slate-500 mb-2 tracking-widest">全場總人數 (掃描總計)</p>
-                    <p id="statTotalActual" class="text-stats-num font-black text-purple-600">0</p>
-                </div>
-            </div>
-            <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                <div class="bg-rose-700 text-white px-6 py-4 text-2xl font-bold tracking-widest text-center">點傳師名單</div>
-                <table class="w-full text-left border-collapse table-condensed" style="font-size:1.15rem">
-                    <thead class="bg-slate-100 font-bold">
-                        <tr><th class="border-b">壇名</th><th class="border-b">姓名</th><th class="border-b text-center">出席</th></tr>
-                    </thead>
-                    <tbody id="masterTable_點傳師"></tbody>
-                </table>
-            </div>
+        <div class="bg-white p-4 rounded-xl border-t-8 border-green-500 shadow-sm">
+            <p class="text-xs font-bold text-slate-500 mb-1">應到實到（名單出席）</p>
+            <p id="statPresent" class="stat-num text-green-600">0</p>
         </div>
-
-        <!-- ===== 第二頁：忠字班 ===== -->
-        <div id="page2" class="mt-8">
-            <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                <div class="bg-blue-800 text-white px-6 py-4 text-2xl font-bold tracking-widest text-center">忠字班名單</div>
-                <table class="w-full text-left border-collapse table-condensed" style="font-size:1.15rem">
-                    <thead class="bg-slate-100 font-bold">
-                        <tr><th class="border-b">壇名</th><th class="border-b">姓名</th><th class="border-b text-center">出席</th></tr>
-                    </thead>
-                    <tbody id="masterTable_忠字班"></tbody>
-                </table>
-            </div>
+        <div class="bg-white p-4 rounded-xl border-t-8 border-purple-500 shadow-sm">
+            <p class="text-xs font-bold text-slate-500 mb-1">全場總人數（掃描總計）</p>
+            <p id="statActual" class="stat-num text-purple-600">0</p>
         </div>
-
-        <!-- ===== 第三頁：義字班群 ===== -->
-        <div id="page3" class="mt-8">
-            <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                <!-- 需求1：標題字體更大 -->
-                <div class="bg-slate-800 text-white px-6 py-4 text-3xl font-bold text-center tracking-widest">
-                    公壇負責人 / 道務義字班 / 班務義字班
-                </div>
-                <div class="overflow-x-auto">
-                    <!-- 需求1：打勾縮小 → formatCellYi 用 0.75rem，字體放大到1.35rem -->
-                    <table class="yi-table border-collapse" style="font-size:1.35rem">
-                        <thead class="bg-slate-100 font-bold text-slate-700">
-                            <tr>
-                                <th class="border p-2 text-center bg-orange-100" style="width:6%">壇名</th>
-                                <th class="border p-2" style="width:13.5%">公壇負責人</th>
-                                <th class="border p-2" style="width:13.5%">道務義字班</th>
-                                <th class="border p-2 border-r-4 border-r-slate-400" style="width:13.5%">班務義字班</th>
-                                <th class="border p-2 text-center bg-orange-100" style="width:6%">壇名</th>
-                                <th class="border p-2" style="width:13.5%">公壇負責人</th>
-                                <th class="border p-2" style="width:13.5%">道務義字班</th>
-                                <th class="border p-2" style="width:13.5%">班務義字班</th>
-                            </tr>
-                        </thead>
-                        <tbody id="masterTable_義字班群"></tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-
-        <!-- ===== 第四頁：負責講師出席名單 ===== -->
-        <div id="page4" class="mt-8">
-            <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                <div class="bg-teal-700 text-white px-6 py-4 text-2xl font-bold text-center tracking-widest">負責講師出席名單</div>
-                <div class="overflow-x-auto">
-                    <table class="lect-table border-collapse" style="font-size:1.2rem">
-                        <thead class="bg-slate-100 font-bold text-slate-700">
-                            <tr>
-                                <th class="border p-2 text-center bg-blue-50" style="width:7%">班別</th>
-                                <th class="border p-2 text-center bg-green-50" style="width:7%">道場</th>
-                                <th class="border p-2 bg-orange-50" style="width:10%">壇名</th>
-                                <th class="border p-2" style="width:15.2%">講師1</th>
-                                <th class="border p-2" style="width:15.2%">講師2</th>
-                                <th class="border p-2" style="width:15.2%">講師3</th>
-                                <th class="border p-2" style="width:15.2%">講師4</th>
-                                <th class="border p-2" style="width:15.2%">講師5</th>
-                            </tr>
-                        </thead>
-                        <tbody id="masterTable_負責講師"></tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-
-        <!-- ===== 第五頁：非預設名單 ===== -->
-        <!-- 需求2：標題縮小、壇名和姓名等大 -->
-        <div id="page5" class="mt-8">
-            <div id="extraSection" class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden hidden">
-                <div class="bg-orange-600 text-white px-4 py-2 text-base font-bold text-center">非預設名單之出席人員 (列入總人數)</div>
-                <div class="overflow-x-auto">
-                    <table class="w-full text-left border-collapse" style="font-size:1.1rem">
-                        <tbody id="extraTableBody"></tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-
     </div>
 
+    <!-- 點傳師 + 忠字班 並排 -->
+    <div class="p1-wrap">
+        <!-- 左：點傳師 -->
+        <div class="p1-half bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+            <div class="bg-rose-700 text-white py-2 text-xl font-bold text-center tracking-wider">點傳師名單</div>
+            <div class="p1-grid">
+                <!-- 標題列 -->
+                <div class="g-row g-head">
+                    <div class="g-cell p1-cell p1-church">壇名</div>
+                    <div class="g-cell p1-cell p1-name">姓名</div>
+                    <div class="g-cell p1-cell p1-att">出席</div>
+                </div>
+                <!-- 資料列由 renderP1() 動態插入 -->
+                <div id="tb_master"></div>
+            </div>
+        </div>
+        <!-- 右：忠字班 -->
+        <div class="p1-half bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+            <div class="bg-blue-800 text-white py-2 text-xl font-bold text-center tracking-wider">忠字班名單</div>
+            <div class="p1-grid">
+                <div class="g-row g-head">
+                    <div class="g-cell p1-cell p1-church">壇名</div>
+                    <div class="g-cell p1-cell p1-name">姓名</div>
+                    <div class="g-cell p1-cell p1-att">出席</div>
+                </div>
+                <div id="tb_loyal"></div>
+            </div>
+        </div>
+    </div>
 </div>
 
+<!-- ══════════ PAGE 2：義字班群 ══════════ -->
+<div id="page2" class="mt-6">
+    <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+        <div class="bg-slate-800 text-white px-4 py-3 text-2xl font-bold text-center tracking-widest">
+            公壇負責人 / 道務義字班 / 班務義字班
+        </div>
+        <div class="yi-grid">
+            <!-- 義字班標題列（左半：壇名+三角色；右半：壇名+三角色） -->
+            <div class="g-row g-head">
+                <div class="g-cell yi-cell yi-church">壇名</div>
+                <div class="g-cell yi-cell yi-role">公壇負責人</div>
+                <div class="g-cell yi-cell yi-role">道務義字班</div>
+                <div class="g-cell yi-cell yi-role yi-sep">班務義字班</div>
+                <div class="g-cell yi-cell yi-church">壇名</div>
+                <div class="g-cell yi-cell yi-role">公壇負責人</div>
+                <div class="g-cell yi-cell yi-role">道務義字班</div>
+                <div class="g-cell yi-cell yi-role">班務義字班</div>
+            </div>
+            <!-- 資料列由 renderP2() 動態插入 -->
+            <div id="tb_yi"></div>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════ PAGE 3：負責講師 ══════════ -->
+<div id="page3" class="mt-6">
+    <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+        <div class="bg-teal-700 text-white px-4 py-3 text-xl font-bold text-center tracking-widest">負責講師出席名單</div>
+        <div class="lc-grid">
+            <!-- 標題列 -->
+            <div class="g-row g-head">
+                <div class="g-cell lc-cell lc-unit"  style="background:#eff6ff">公/分</div>
+                <div class="g-cell lc-cell lc-area"  style="background:#f0fdf4">班別</div>
+                <div class="g-cell lc-cell lc-altar" style="background:#fff7ed">地點</div>
+                <div class="g-cell lc-cell lc-names" style="background:#f8fafc">講師名單</div>
+            </div>
+            <!-- 資料列由 renderP3() 動態插入 -->
+            <div id="tb_lect"></div>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════ PAGE 4：非預設名單 ══════════ -->
+<div id="page4" class="mt-6">
+    <div id="extraSection" class="hidden bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+        <div class="bg-orange-600 text-white px-4 py-1 text-sm font-bold text-center">非預設名單之出席人員（列入總人數）</div>
+        <!-- 資料列由 renderExtra() 動態插入 -->
+        <div id="tb_extra"></div>
+    </div>
+</div>
+
+</div><!-- /print-wrap -->
 <script>
-    const mastersList = [
-        { church: "正洪", name: "洪貴香" },
-        { church: "正命", name: "巫金芳" },
-        { church: "正吉", name: "李勝忠" },
-        { church: "正欣", name: "葉德明" },
-        { church: "正菁", name: "張素華" },
-        { church: "正通", name: "林清泉" },
-        { church: "正霖", name: "沈美華" },
-        { church: "正惟", name: "王秀娟" },
-        { church: "正盛", name: "林艾慧" }
-    ];
+/* ════════════════════════════════════════════════════════════
+   資料區
+   ════════════════════════════════════════════════════════════ */
+const mastersList = [
+    {church:"正洪",name:"洪貴香"},{church:"正命",name:"巫金芳"},{church:"正吉",name:"李勝忠"},
+    {church:"正欣",name:"葉德明"},{church:"正菁",name:"張素華"},{church:"正通",name:"林清泉"},
+    {church:"正霖",name:"沈美華"},{church:"正惟",name:"王秀娟"},{church:"正盛",name:"林艾慧"}
+];
+const loyalList = [
+    {church:"正承",name:"劉汝香"},{church:"正欣",name:"陳素月"},{church:"正同",name:"林沛諠"},
+    {church:"正合",name:"梁家鳴"},{church:"正路",name:"洪佳堯"},{church:"正霖",name:"蔡文邦"},
+    {church:"正悅",name:"林絲綾"},{church:"正承",name:"余宏彬"},{church:"正持",name:"林秉良"}
+];
+const volunteerGroups = [
+    {church:"正承",names:["余宏彬","魏士疄","姚麗英"]},{church:"正禮",names:["顏綉芸","何月桃","雲淑如"]},
+    {church:"正欣",names:["王雅惠","陳慧賢","劉于溱"]},{church:"正傳",names:["陳坤雄","蔡美姿","林明賢"]},
+    {church:"正齊",names:["梁金聰","梁金聰","李賜財"]},{church:"正吉",names:["薛良奎","羅時嵩","洪稚琇"]},
+    {church:"正同",names:["林沛諠","何添福","張凱誼"]},{church:"正通",names:["吳珮均","吳珮甄","蔡淑婷"]},
+    {church:"正霖",names:["楊滄堯","廖柚淇","廖家凰"]},{church:"正照",names:["陳映雪","顏麗秀","黃品鈞"]},
+    {church:"正港",names:["楊莉蓁","王昱翔","阮儀暄"]},{church:"正命",names:["巫金芳","陳怡君","林麗鴛"]},
+    {church:"正路",names:["洪金益","洪佳隆","張玄林"]},{church:"正步",names:["林春芳","施連昌","黃秀英"]},
+    {church:"正沺",names:["陳宝秀","陳錦雲","黃莉芬"]},{church:"正奉",names:["李穎甄","陳曉鈴","康嘉育"]},
+    {church:"正湶",names:["李雲卿","李順源","陳金蓮"]},{church:"正積",names:["林永寶","陳嘉榮","林成懋"]},
+    {church:"正惟",names:["蕭梨山","卓宜樺","趙麗秋"]},{church:"正菁",names:["張芳萍","謝宛玲","陳佳琪"]},
+    {church:"正厚",names:["陳瑛兒","許家銘","李芷懿"]},{church:"正願",names:["洪裕嘉","張瓊惠","施博生"]},
+    {church:"正師",names:["陳姿穎","郭宥禾","鍾昀青"]},{church:"正合",names:["梁家鳴","魏淑花","李沛宸"]},
+    {church:"正洪",names:["洪貴香","洪美淑","陳鈺頷"]},{church:"正湖",names:["林水湖","林妡綸","何佳倫"]},
+    {church:"正宥",names:["陳 燕","陳姿伊","陳文政"]},{church:"正漢",names:["林漢文","江麗珍","張順婷"]},
+    {church:"正嶺",names:["許淑玲","洪巧融","林嘉莉"]},{church:"正盛",names:["林砡鋒","林士媛","余家承"]},
+    {church:"正六",names:["張碧蘭","鄭祥","黃柏勳"]}, {church:"正持",names:["楊采玲","柯鈺斐","黃鈺純"]},
+    {church:"正薰",names:["鄭純蓉","簡嘉成","蔡語蓁"]},{church:"正洲",names:["陳南州","林銘珍","洪淑惠"]},
+    {church:"正悅",names:["林絲綾","陳泓志","楊惠玲"]},{church:"正楷",names:["覃玉美","王翠月","王盈棋"]}
+];
+const lecturerGroupsRaw = [
+    {unit:"公班",area:"崇德",altar:"正承",    lecturers:["陳素月","王昱翔","何添福","李穎甄","蔡雯雅"]},
+    {unit:"公班",area:"崇德",altar:"正嶺",    lecturers:["陳宝秀","林成懋"]},
+    {unit:"公班",area:"崇德",altar:"正盛",    lecturers:["林砡鋒","李莉菁"]},
+    {unit:"公班",area:"崇德",altar:"正楷陳氏",lecturers:["覃玉美","洪淑惠","林銘珍"]},
+    {unit:"公班",area:"崇德",altar:"正願",    lecturers:["洪裕嘉","張瓊惠"]},
+    {unit:"公班",area:"行德",altar:"正承",    lecturers:["劉汝香","廖柚淇","余宏彬","阮儀暄"]},
+    {unit:"公班",area:"行德",altar:"正通",    lecturers:["吳珮甄","蔡淑婷"]},
+    {unit:"公班",area:"行德",altar:"正惟趙氏",lecturers:["趙麗秋","卓淑芬","林文鴻"]},
+    {unit:"分班",area:"行德",altar:"正命",    lecturers:["林麗鴛","黃昌德"]},
+    {unit:"公班",area:"培德",altar:"正承",    lecturers:["陳瑛兒","楊采玲","許家銘","黃品鈞"]},
+    {unit:"公班",area:"培德",altar:"正薰",    lecturers:["鄭純蓉","陳宝秀","李芳蓁"]},
+    {unit:"分班",area:"培德",altar:"正嶺",    lecturers:["洪巧融","許淑玲","林嘉莉"]},
+    {unit:"公班",area:"至善",altar:"正承",    lecturers:["林秉良","顏麗秀","林淑菁","李淑如"]},
+    {unit:"公班",area:"至善",altar:"正步",    lecturers:["黃秀英","李沛宸","林春芳","施連昌"]},
+    {unit:"公班",area:"至善",altar:"正菁劉氏",lecturers:["陳佳琪","謝宛玲","林絲綾"]},
+    {unit:"公班",area:"至善",altar:"正湖",    lecturers:["鄭祥","洪雪忞","何佳倫"]},
+    {unit:"公班",area:"至善",altar:"正盛",    lecturers:["余家承","田人文"]},
+    {unit:"公班",area:"至善",altar:"正楷陳氏",lecturers:["陳素玲","陳漢苙","魏士疄"]},
+    {unit:"分班",area:"至善",altar:"正積陳氏",lecturers:["林成懋","陳嘉榮"]},
+    {unit:"分班",area:"至善",altar:"正合",    lecturers:["李沛宸","梁金聰"]},
+    {unit:"分班",area:"至善",altar:"正合張李氏",lecturers:["李淑如","梁家鳴","李沛宸"]},
+    {unit:"公班",area:"新民",altar:"正承",    lecturers:["梁家鳴","林沛諠","陳曉玲","黃鈺純"]},
+    {unit:"公班",area:"新民",altar:"正欣",    lecturers:["林冠廷","陳慧賢","黃莉芬","王雅惠"]},
+    {unit:"公班",area:"新民",altar:"正通",    lecturers:["吳珮均","馮輝亮","胡毓哲"]},
+    {unit:"公班",area:"新民",altar:"正合",    lecturers:["黃金壽","顏麗秀"]}
+];
+const AREA_BG = {崇德:'#dbeafe',行德:'#dcfce7',培德:'#fef9c3',至善:'#fce7f3',新民:'#ede9fe'};
 
-    const loyalList = [
-        { church: "正承", name: "劉汝香" },
-        { church: "正欣", name: "陳素月" },
-        { church: "正同", name: "林沛諠" },
-        { church: "正合", name: "梁家鳴" },
-        { church: "正路", name: "洪佳堯" },
-        { church: "正霖", name: "蔡文邦" },
-        { church: "正悅", name: "林絲綾" },
-        { church: "正承", name: "余宏彬" },
-        { church: "正持", name: "林秉良" }
-    ];
+let DB = [];
 
-    // 義字班群：依需求3排序 → 左邊先（索引0,2,4...），右邊後（索引1,3,5...），兩邊對稱
-    // 實作：排序後，一列兩欄，左欄=第0,2,4...項；右欄=第1,3,5...項
-    const volunteerGroups = [
-        { church: "正承", names: ["余宏彬", "魏士疄", "姚麗英"] },
-        { church: "正禮", names: ["顏綉芸", "何月桃", "雲淑如"] },
-        { church: "正欣", names: ["王雅惠", "陳慧賢", "劉于溱"] },
-        { church: "正傳", names: ["陳坤雄", "蔡美姿", "林明賢"] },
-        { church: "正齊", names: ["梁金聰", "梁金聰", "李賜財"] },
-        { church: "正吉", names: ["薛良奎", "羅時嵩", "洪稚琇"] },
-        { church: "正同", names: ["林沛諠", "何添福", "張凱誼"] },
-        { church: "正通", names: ["吳珮均", "吳珮甄", "蔡淑婷"] },
-        { church: "正霖", names: ["楊滄堯", "廖柚淇", "廖家凰"] },
-        { church: "正照", names: ["陳映雪", "顏麗秀", "黃品鈞"] },
-        { church: "正港", names: ["楊莉蓁", "王昱翔", "阮儀暄"] },
-        { church: "正命", names: ["巫金芳", "陳怡君", "林麗鴛"] },
-        { church: "正路", names: ["洪金益", "洪佳隆", "張玄林"] },
-        { church: "正步", names: ["林春芳", "施連昌", "黃秀英"] },
-        { church: "正沺", names: ["陳宝秀", "陳錦雲", "黃莉芬"] },
-        { church: "正奉", names: ["李穎甄", "陳曉鈴", "康嘉育"] },
-        { church: "正湶", names: ["李雲卿", "李順源", "陳金蓮"] },
-        { church: "正積", names: ["林永寶", "陳嘉榮", "林成懋"] },
-        { church: "正惟", names: ["蕭梨山", "卓宜樺", "趙麗秋"] },
-        { church: "正菁", names: ["張芳萍", "謝宛玲", "陳佳琪"] },
-        { church: "正厚", names: ["陳瑛兒", "許家銘", "李芷懿"] },
-        { church: "正願", names: ["洪裕嘉", "張瓊惠", "施博生"] },
-        { church: "正師", names: ["陳姿穎", "郭宥禾", "鍾昀青"] },
-        { church: "正合", names: ["梁家鳴", "魏淑花", "李沛宸"] },
-        { church: "正洪", names: ["洪貴香", "洪美淑", "陳鈺頷"] },
-        { church: "正湖", names: ["林水湖", "林妡綸", "何佳倫"] },
-        { church: "正宥", names: ["陳 燕", "陳姿伊", "陳文政"] },
-        { church: "正漢", names: ["林漢文", "江麗珍", "張順婷"] },
-        { church: "正嶺", names: ["許淑玲", "洪巧融", "林嘉莉"] },
-        { church: "正盛", names: ["林砡鋒", "林士媛", "余家承"] },
-        { church: "正六", names: ["張碧蘭", "鄭祥", "黃柏勳"] },
-        { church: "正持", names: ["楊采玲", "柯鈺斐", "黃鈺純"] },
-        { church: "正薰", names: ["鄭純蓉", "簡嘉成", "蔡語蓁"] },
-        { church: "正洲", names: ["陳南州", "林銘珍", "洪淑惠"] },
-        { church: "正悅", names: ["林絲綾", "陳泓志", "楊惠玲"] },
-        { church: "正楷", names: ["覃玉美", "王翠月", "王盈棋"] }
-    ];
+function init() {
+    DB = [];
+    mastersList.forEach(p => DB.push({church:p.church, role:'點傳師',   name:p.name.trim(), present:false}));
+    loyalList.forEach(p   => DB.push({church:p.church, role:'忠字班',   name:p.name.trim(), present:false}));
+    volunteerGroups.forEach(g => {
+        ['公壇負責人','道務義字班','班務義字班'].forEach((role,i) =>
+            DB.push({church:g.church, role, name:g.names[i].trim(), present:false}));
+    });
+    lecturerGroupsRaw.forEach(g => g.lecturers.forEach(name =>
+        DB.push({church:g.altar, role:'負責講師', name:name.trim(), present:false})));
+    renderAll();
+}
 
-    // 負責講師名單，加入分班
-    const lecturerGroups = [
-        { unit:"公班", area:"崇德", altar:"正承",    lecturers:["陳素月","王昱翔","何添福","李穎甄","蔡雯雅"] },
-        { unit:"公班", area:"崇德", altar:"正嶺",    lecturers:["陳宝秀","林成懋"] },
-        { unit:"公班", area:"崇德", altar:"正盛",    lecturers:["林砡鋒","李莉菁"] },
-        { unit:"公班", area:"崇德", altar:"正楷陳氏", lecturers:["覃玉美","洪淑惠","林銘珍"] },
-        { unit:"公班", area:"崇德", altar:"正願",    lecturers:["洪裕嘉","張瓊惠"] },
-        { unit:"公班", area:"行德", altar:"正承",    lecturers:["劉汝香","廖柚淇","余宏彬","阮儀暄"] },
-        { unit:"公班", area:"行德", altar:"正通",    lecturers:["吳珮甄","蔡淑婷"] },
-        { unit:"公班", area:"行德", altar:"正惟趙氏", lecturers:["趙麗秋","卓淑芬","林文鴻"] },
-        { unit:"公班", area:"培德", altar:"正承",    lecturers:["陳瑛兒","楊采玲","許家銘","黃品鈞"] },
-        { unit:"公班", area:"培德", altar:"正薰",    lecturers:["鄭純蓉","陳宝秀","李芳蓁"] },
-        { unit:"公班", area:"至善", altar:"正承",    lecturers:["林秉良","顏麗秀","林淑菁","李淑如"] },
-        { unit:"公班", area:"至善", altar:"正步",    lecturers:["黃秀英","李沛宸","林春芳","施連昌"] },
-        { unit:"公班", area:"至善", altar:"正菁劉氏", lecturers:["陳佳琪","謝宛玲","林絲綾"] },
-        { unit:"公班", area:"至善", altar:"正湖",    lecturers:["鄭祥","洪雪忞","何佳倫"] },
-        { unit:"公班", area:"至善", altar:"正盛",    lecturers:["余家承","田人文"] },
-        { unit:"公班", area:"至善", altar:"正楷陳氏", lecturers:["陳素玲","陳漢苙","魏士疄"] },
-        { unit:"公班", area:"新民", altar:"正承",    lecturers:["梁家鳴","林沛諠","陳曉玲","黃鈺純"] },
-        { unit:"公班", area:"新民", altar:"正欣",    lecturers:["林冠廷","陳慧賢","黃莉芬","王雅惠"] },
-        { unit:"公班", area:"新民", altar:"正通",    lecturers:["吳珮均","馮輝亮","胡毓哲"] },
-        { unit:"公班", area:"新民", altar:"正合",    lecturers:["黃金壽","顏麗秀"] },
-        { unit:"分班", area:"行德", altar:"正命",    lecturers:["林麗鴛","黃昌德"] },
-        { unit:"分班", area:"培德", altar:"正嶺",    lecturers:["洪巧融","許淑玲","林嘉莉"] },
-        { unit:"分班", area:"至善", altar:"正積陳氏", lecturers:["林成懋","陳嘉榮"] },
-        { unit:"分班", area:"至善", altar:"正合",    lecturers:["李沛宸","梁金聰"] },
-        { unit:"分班", area:"至善", altar:"正合張李氏",lecturers:["李淑如","梁家鳴","李沛宸"] }
-    ];
+function renderAll() { renderP1(); renderP2(); renderP3(); updateStats(); }
 
-    let attendanceData = [];
-
-    function initData() {
-        attendanceData = [];
-        mastersList.forEach(p =>
-            attendanceData.push({ church: p.church, role: "點傳師", name: p.name.trim(), present: false })
-        );
-        loyalList.forEach(p =>
-            attendanceData.push({ church: p.church, role: "忠字班", name: p.name.trim(), present: false })
-        );
-        volunteerGroups.forEach(item => {
-            ["公壇負責人","道務義字班","班務義字班"].forEach((role, idx) =>
-                attendanceData.push({ church: item.church, role, name: item.names[idx].trim(), present: false })
-            );
+/* ── PAGE 1 ──
+   每列：壇名 | 姓名 | 出席○
+   class 組合：g-row + 斑馬/hit；每格：g-cell + p1-cell + 欄寬 class       */
+function renderP1() {
+    ['點傳師','忠字班'].forEach((role, ri) => {
+        const wrap = document.getElementById(['tb_master','tb_loyal'][ri]);
+        wrap.innerHTML = '';
+        DB.filter(p => p.role === role).forEach((p, i) => {
+            const row = document.createElement('div');
+            row.className = 'g-row ' + (p.present ? 'g-hit' : (i%2===0 ? 'g-odd' : 'g-even'));
+            row.innerHTML =
+                `<div class="g-cell p1-cell p1-church">${p.church}</div>` +
+                `<div class="g-cell p1-cell p1-name" style="font-weight:700">${p.name}</div>` +
+                `<div class="g-cell p1-cell p1-att" style="color:#16a34a;font-weight:700">${p.present?'○':''}</div>`;
+            wrap.appendChild(row);
         });
-        lecturerGroups.forEach(item =>
-            item.lecturers.forEach(name =>
-                attendanceData.push({ church: item.altar, role: "負責講師", name: name.trim(), present: false })
-            )
-        );
-        renderAll();
-    }
+    });
+}
 
-    function renderAll() {
-        // 點傳師
-        const masterTbody = document.getElementById('masterTable_點傳師');
-        masterTbody.innerHTML = '';
-        attendanceData.filter(p => p.role === "點傳師").forEach(p => {
-            const tr = document.createElement('tr');
-            tr.className = p.present ? 'checked-row font-bold' : 'zebra-row';
-            tr.innerHTML = `<td>${p.church}</td><td class="font-bold">${p.name}</td>
-                <td class="text-center">${p.present ? '<span class="checkmark">✔</span>' : '<span class="text-slate-200">─</span>'}</td>`;
-            masterTbody.appendChild(tr);
-        });
-
-        // 忠字班
-        const loyalTbody = document.getElementById('masterTable_忠字班');
-        loyalTbody.innerHTML = '';
-        attendanceData.filter(p => p.role === "忠字班").forEach(p => {
-            const tr = document.createElement('tr');
-            tr.className = p.present ? 'checked-row font-bold' : 'zebra-row';
-            tr.innerHTML = `<td>${p.church}</td><td class="font-bold">${p.name}</td>
-                <td class="text-center">${p.present ? '<span class="checkmark">✔</span>' : '<span class="text-slate-200">─</span>'}</td>`;
-            loyalTbody.appendChild(tr);
-        });
-
-        // 義字班群
-        // 需求3：左邊先排序再右邊，兩邊對稱
-        // 將 volunteerGroups 重新排列：奇數位置(0,2,4...)在左欄，偶數位置(1,3,5...)在右欄
-        const groupTbody = document.getElementById('masterTable_義字班群');
-        groupTbody.innerHTML = '';
-        const total = volunteerGroups.length;
-        const half = Math.ceil(total / 2);
-        // 左欄 = 索引 0~half-1，右欄 = 索引 half~total-1
-        for (let i = 0; i < half; i++) {
-            const tr = document.createElement('tr');
-            tr.className = i % 2 === 0 ? 'bg-white' : 'bg-slate-50';
-            let rowHtml = '';
-            for (let col = 0; col < 2; col++) {
-                const idx = col === 0 ? i : i + half;
-                const item = volunteerGroups[idx];
-                const sepClass = col === 0 ? 'border-r-4 border-r-slate-400' : '';
-                if (!item) {
-                    rowHtml += `<td class="border p-2 church-col bg-orange-50"></td>
-                                <td class="border p-2"></td><td class="border p-2"></td>
-                                <td class="border p-2 ${sepClass}"></td>`;
-                    continue;
-                }
-                const people = attendanceData.filter(p =>
-                    p.church === item.church && ["公壇負責人","道務義字班","班務義字班"].includes(p.role)
-                );
-                const l = people.find(p => p.role === "公壇負責人");
-                const d = people.find(p => p.role === "道務義字班");
-                const b = people.find(p => p.role === "班務義字班");
-                rowHtml += `
-                    <td class="border p-2 church-col font-bold text-center bg-orange-50">${item.church}</td>
-                    <td class="border p-2 ${l?.present ? 'checked-row' : ''}">${formatCellYi(l)}</td>
-                    <td class="border p-2 ${d?.present ? 'checked-row' : ''}">${formatCellYi(d)}</td>
-                    <td class="border p-2 ${sepClass} ${b?.present ? 'checked-row' : ''}">${formatCellYi(b)}</td>
-                `;
+/* ── PAGE 2 ──
+   每列：[左]壇名＋3角色 | [分隔] | [右]壇名＋3角色
+   yi-sep 加在左半第三個角色格（班務義字班）右側                           */
+function renderP2() {
+    const wrap = document.getElementById('tb_yi');
+    wrap.innerHTML = '';
+    const half = Math.ceil(volunteerGroups.length / 2);
+    for (let i = 0; i < half; i++) {
+        const row = document.createElement('div');
+        row.className = 'g-row ' + (i%2===0 ? 'g-odd' : 'g-even');
+        let html = '';
+        for (let col = 0; col < 2; col++) {
+            const item = volunteerGroups[col===0 ? i : i+half];
+            const isSepSide = col===0; /* 左半的班務義字班格加粗右線 */
+            if (!item) {
+                html += `<div class="g-cell yi-cell yi-church${isSepSide?' yi-sep':''}"></div>
+                         <div class="g-cell yi-cell yi-role"></div>
+                         <div class="g-cell yi-cell yi-role"></div>
+                         <div class="g-cell yi-cell yi-role${isSepSide?' yi-sep':''}"></div>`;
+                /* 修正：空格的 sep 只加在壇名那格，班務那格才是分隔線 */
+                continue;
             }
-            tr.innerHTML = rowHtml;
-            groupTbody.appendChild(tr);
-        }
-
-        // 負責講師
-        renderLecturers();
-
-        updateStats();
-    }
-
-    function formatCellYi(p) {
-        if (!p) return '';
-        // 需求1：打勾縮小到0.75rem，名字維持大字
-        return `<div class="flex justify-between items-center gap-1">
-                    <span class="${p.present ? 'font-bold' : ''}">${p.name}</span>
-                    ${p.present ? '<span class="checkmark" style="font-size:0.75rem;flex-shrink:0">✔</span>' : ''}
-                </div>`;
-    }
-
-    function renderLecturers() {
-        const tbody = document.getElementById('masterTable_負責講師');
-        tbody.innerHTML = '';
-        let prevArea = '';
-        lecturerGroups.forEach(item => {
-            const tr = document.createElement('tr');
-            tr.className = 'zebra-row';
-            const lects = item.lecturers.map(name => {
-                const found = attendanceData.find(p => p.role === "負責講師" && p.name === name && p.church === item.altar);
-                return found || { name, present: false };
+            const roles = ['公壇負責人','道務義字班','班務義字班'];
+            const people = roles.map(r => DB.find(p => p.church===item.church && p.role===r));
+            html += `<div class="g-cell yi-cell yi-church" style="background:#fff7ed">${item.church}</div>`;
+            people.forEach((p, pi) => {
+                const isSep  = isSepSide && pi===2; /* 左半班務義字班右側加粗線 */
+                const hitCls = p?.present ? ' g-hit' : '';
+                const nameHtml = p ? (p.present
+                    ? `<b>${p.name}</b><span class="yi-ok">○</span>`
+                    : p.name) : '';
+                html += `<div class="g-cell yi-cell yi-role${isSep?' yi-sep':''}${hitCls}">${nameHtml}</div>`;
             });
-
-            const areaChanged = item.area !== prevArea;
-            if (areaChanged) prevArea = item.area;
-
-            // 分班字色藍色
-            const unitClass = item.unit === "分班" ? 'unit-fenban' : '';
-
-            let cells = `
-                <td class="border p-2 lect-unit text-center ${unitClass}" style="font-size:1.1rem">${item.unit}</td>
-                <td class="border p-2 text-center font-bold" style="background-color:${areaColor(item.area)};font-size:1.1rem">${item.area}</td>
-                <td class="border p-2 lect-altar" style="font-size:1.1rem">${item.altar}</td>
-            `;
-            for (let i = 0; i < 5; i++) {
-                const p = lects[i];
-                if (p) {
-                    cells += `<td class="border p-2 ${p.present ? 'checked-row' : ''}">
-                        <div class="flex justify-between items-center gap-1">
-                            <span class="${p.present ? 'font-bold' : ''}">${p.name}</span>
-                            ${p.present ? '<span class="checkmark" style="font-size:0.85rem;flex-shrink:0">✔</span>' : ''}
-                        </div></td>`;
-                } else {
-                    cells += `<td class="border p-2"></td>`;
-                }
-            }
-            tr.innerHTML = cells;
-            tbody.appendChild(tr);
-        });
-    }
-
-    function areaColor(area) {
-        const map = { '崇德':'#dbeafe', '行德':'#dcfce7', '培德':'#fef9c3', '至善':'#fce7f3', '新民':'#ede9fe' };
-        return map[area] || '#f1f5f9';
-    }
-
-    function processAttendance() {
-        const rawText = document.getElementById('barcodeInput').value.trim();
-        if (!rawText) return;
-        const lines = rawText.split('\n');
-        const header = lines[0].split('\t');
-        const nameIdx = header.indexOf('姓名');
-        const churchIdx = header.indexOf('佛堂');
-        if (nameIdx === -1) return alert("錯誤：資料中找不到「姓名」標題列！");
-
-        attendanceData.forEach(p => p.present = false);
-        const actualTotalSet = new Set();
-        const extra = [];
-
-        for (let i = 1; i < lines.length; i++) {
-            const row = lines[i].split('\t');
-            if (row.length <= nameIdx) continue;
-            const name = row[nameIdx].trim();
-            const church = churchIdx !== -1 ? row[churchIdx].trim() : "未知";
-            if (!name) continue;
-            actualTotalSet.add(name);
-
-            let matched = false;
-            attendanceData.forEach(p => {
-                if (p.name === name) { p.present = true; matched = true; }
-            });
-            if (!matched) extra.push({ name, church });
         }
-
-        renderAll();
-        renderExtra(extra);
-        updateStats(actualTotalSet.size);
-
-        const btn = document.getElementById('processBtn');
-        btn.innerText = "核對成功！";
-        btn.classList.replace('bg-blue-600', 'bg-green-600');
-        setTimeout(() => { btn.innerText = "執行核對"; btn.classList.replace('bg-green-600', 'bg-blue-600'); }, 2000);
+        row.innerHTML = html;
+        wrap.appendChild(row);
     }
+}
 
-    function renderExtra(extraList) {
-        const sec = document.getElementById('extraSection');
-        const tbody = document.getElementById('extraTableBody');
-        if (extraList.length === 0) return sec.classList.add('hidden');
-        sec.classList.remove('hidden');
-        tbody.innerHTML = '';
-        const uniqueExtra = [];
-        const seen = new Set();
-        extraList.forEach(e => { if (!seen.has(e.name)) { uniqueExtra.push(e); seen.add(e.name); } });
-        // 需求2：壇名和姓名等大 (font-size:1.1rem)，移除 text-slate-400 小字差異
-        for (let i = 0; i < uniqueExtra.length; i += 4) {
-            const tr = document.createElement('tr');
-            tr.className = 'zebra-row';
-            let rowHtml = '';
-            for (let j = 0; j < 4; j++) {
-                const p = uniqueExtra[i + j];
-                rowHtml += p
-                    ? `<td class="border px-4 py-2" style="font-size:1.1rem"><span class="font-bold mr-2">${p.church}</span><span class="font-bold">${p.name}</span><span class="checkmark ml-2">✔</span></td>`
-                    : `<td class="border"></td>`;
-            }
-            tr.innerHTML = rowHtml;
-            tbody.appendChild(tr);
+/* ── PAGE 3 ──
+   每列：公/分 | 班別 | 地點 | 講師 chip 群
+   講師 chip 用 inline-block，允許折行                                       */
+function renderP3() {
+    const wrap = document.getElementById('tb_lect');
+    wrap.innerHTML = '';
+    lecturerGroupsRaw.forEach((item, i) => {
+        const row = document.createElement('div');
+        row.className = 'g-row ' + (i%2===0 ? 'g-odd' : 'g-even');
+        const isFen     = item.unit==='分班';
+        const unitBg    = isFen ? '#dbeafe' : '#eff6ff';
+        const unitColor = isFen ? '#1d4ed8' : '#1e3a5f';
+        const areaBg    = AREA_BG[item.area] || '#f1f5f9';
+        const chipsHtml = item.lecturers.map(name => {
+            const p = DB.find(d => d.role==='負責講師' && d.name===name && d.church===item.altar) || {name, present:false};
+            return `<span class="lect-chip${p.present?' font-bold':''}">${p.name}${p.present?`<span class="lect-ok">○</span>`:''}</span>`;
+        }).join('');
+        row.innerHTML =
+            `<div class="g-cell lc-cell lc-unit"  style="background:${unitBg};color:${unitColor};font-weight:700">${item.unit}</div>` +
+            `<div class="g-cell lc-cell lc-area"  style="background:${areaBg};font-weight:700">${item.area}</div>` +
+            `<div class="g-cell lc-cell lc-altar" style="background:#fff7ed;font-weight:700">${item.altar}</div>` +
+            `<div class="g-cell lc-cell lc-names">${chipsHtml}</div>`;
+        wrap.appendChild(row);
+    });
+}
+
+function updateStats(actual=0) {
+    document.getElementById('statTotal').innerText   = DB.length;
+    document.getElementById('statPresent').innerText = DB.filter(p=>p.present).length;
+    if (actual>0) document.getElementById('statActual').innerText = actual;
+}
+
+/* ── PAGE 4 ──
+   每列 4 人的 flex row                                                      */
+function renderExtra(list) {
+    const sec   = document.getElementById('extraSection');
+    const wrap  = document.getElementById('tb_extra');
+    const unique = [...new Map(list.map(e=>[e.name,e])).values()];
+    if (!unique.length) return sec.classList.add('hidden');
+    sec.classList.remove('hidden');
+    wrap.innerHTML = '';
+    for (let i=0; i<unique.length; i+=4) {
+        const row = document.createElement('div');
+        row.className = 'g-row ' + (i%8===0 ? 'g-odd' : 'g-even');
+        let h = '';
+        for (let j=0; j<4; j++) {
+            const p = unique[i+j];
+            /* 【P4 文字大小】→ 改 font-size；【P4 格子間距】→ 改 padding */
+            h += p
+                ? `<div class="g-cell ex-cell" style="flex:1;font-size:1.1rem;padding:5px 8px">
+                       <b>${p.church}</b>&nbsp;${p.name}&nbsp;<span style="color:#16a34a;font-weight:700">○</span>
+                   </div>`
+                : `<div class="g-cell ex-cell" style="flex:1"></div>`;
         }
+        row.innerHTML = h;
+        wrap.appendChild(row);
     }
+}
 
-    function updateStats(actualTotal = 0) {
-        document.getElementById('statTotalRequired').innerText = attendanceData.length;
-        document.getElementById('statPresentRequired').innerText = attendanceData.filter(p => p.present).length;
-        if (actualTotal > 0) document.getElementById('statTotalActual').innerText = actualTotal;
+function processAttendance() {
+    const raw = document.getElementById('barcodeInput').value.trim();
+    if (!raw) return;
+    const lines = raw.split('\n');
+    const hdr = lines[0].split('\t');
+    const ni  = hdr.indexOf('姓名');
+    const ci  = hdr.indexOf('佛堂');
+    if (ni===-1) return alert('找不到「姓名」欄！');
+    DB.forEach(p => p.present=false);
+    const seen=new Set(), extra=[];
+    for (let i=1; i<lines.length; i++) {
+        const row    = lines[i].split('\t');
+        const name   = (row[ni]||'').trim();
+        const church = ci!==-1 ? (row[ci]||'').trim() : '未知';
+        if (!name) continue;
+        seen.add(name);
+        let hit = false;
+        DB.forEach(p => { if(p.name===name){p.present=true; hit=true;} });
+        if (!hit) extra.push({name, church});
     }
+    renderAll();
+    renderExtra(extra);
+    updateStats(seen.size);
+    const btn = document.getElementById('processBtn');
+    btn.innerText='核對成功！'; btn.classList.replace('bg-blue-600','bg-green-600');
+    setTimeout(()=>{ btn.innerText='執行核對'; btn.classList.replace('bg-green-600','bg-blue-600'); },2000);
+}
 
-    function resetData() {
-        if (confirm("確定要重置所有簽到狀態嗎？")) {
-            document.getElementById('barcodeInput').value = '';
-            initData();
-            document.getElementById('extraSection').classList.add('hidden');
-            document.getElementById('statTotalActual').innerText = "0";
-        }
-    }
+function resetData() {
+    if (!confirm('確定清空所有簽到？')) return;
+    document.getElementById('barcodeInput').value='';
+    document.getElementById('extraSection').classList.add('hidden');
+    document.getElementById('statActual').innerText='0';
+    init();
+}
 
-    window.onload = initData;
+window.onload=init;
 </script>
 </body>
 </html>
