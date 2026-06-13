@@ -216,9 +216,10 @@ function processData() {
         const lines = raw.split('\n').filter(l => l.trim() !== '');
         if (lines.length >= 1) {
             const hdr = lines[0].split('\t');
-            const ci = hdr.indexOf('佛堂');
+            let ci = hdr.indexOf('佛堂');
+            if (ci === -1) ci = hdr.indexOf('壇名');
             if (ci === -1) {
-                alert('找不到「佛堂」欄！請確認貼上的內容含有標題列。');
+                alert('找不到「佛堂」或「壇名」欄！請確認貼上的內容含有標題列。');
                 return;
             }
             for (let i = 1; i < lines.length; i++) {
