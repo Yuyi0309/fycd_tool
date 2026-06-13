@@ -8,9 +8,9 @@
 /* ══════════════════════════════════════════════════════════════
    全域
    ══════════════════════════════════════════════════════════════ */
-body { font-size:1rem; background:#f1f5f9; }
-.stat-num { font-size:2.2rem; font-weight:900; line-height:1; }
-
+body { font-size:2.2rem; background:#f1f5f9; }
+.stat-num { font-size:3.5rem; font-weight:1800; line-height:1; }
+.barcode-input-box {height: 5rem;}/* ← 【改輸入框的大小】*/
 /* ══════════════════════════════════════════════════════════════
    【螢幕版 共用 grid-row 元件】
    .g-row     = 一列（display:flex）
@@ -29,6 +29,8 @@ body { font-size:1rem; background:#f1f5f9; }
 .g-odd   { background:#ffffff; }
 .g-even  { background:#f8fafc; }
 .g-hit   { background:#dcfce7 !important; }
+.stat-row-gap {    margin-bottom: 1rem;}   /* 螢幕版間距,原本 mb-4 = 1rem，可自行調整 */
+
 
 /* ══════════════════════════════════════════════════════════════
    【螢幕版 PAGE 1：點傳師 + 忠字班】
@@ -48,6 +50,7 @@ body { font-size:1rem; background:#f1f5f9; }
 .p1-church { width:90px;  flex:0 0 90px;  }  /* ← 【螢幕 P1 壇名欄寬】px */
 .p1-name   { flex:1 1 0;   min-width:0;     }  /* ← 【螢幕 P1 姓名欄寬】flex 自動填滿 */
 .p1-att    { width:90px;   flex:0 0 90px;   }  /* ← 【螢幕 P1 出席欄寬】px */
+
 
 /* 螢幕版 P1 文字大小與格子間距 */
 .p1-cell {
@@ -129,6 +132,26 @@ body { font-size:1rem; background:#f1f5f9; }
      螢幕版改什麼都不會影響列印；列印版改什麼都不影響螢幕。
    ══════════════════════════════════════════════════════════════ */
 @media print {
+	/* 統計三格列印樣式 */
+	.grid-cols-3 {
+    gap:24px;       /* 格子間距 */
+	 padding-top:50px;
+	margin-bottom:54px;
+	
+	}
+	.grid-cols-3 > div {
+    padding:18px;
+    border:1px solid #cbd5e1;   /* 整個格子加外框 */
+    border-top-width:24px;        /* 保留上方色條較粗的效果 */
+    border-radius:8px;
+    background:#fff;
+	}
+	.grid-cols-3 .stat-num {
+    font-size:56px;  /* ← 數字大小,改這裡 */
+	}
+	.grid-cols-3 p.text-xs {
+    font-size:18px;  /* ← 標題文字大小 */
+	}
     .no-print { display:none !important; }
     body { background:white; padding:0; margin:0; }
     .print-wrap { max-width:100%; width:100%; padding:0; margin:0; }
@@ -221,7 +244,7 @@ body { font-size:1rem; background:#f1f5f9; }
     <h1 class="text-2xl font-bold mb-3 flex items-center gap-2">
         <span class="bg-blue-600 text-white px-2 py-1 rounded text-lg">2026</span> 會議簽到統計系統
     </h1>
-    <textarea id="barcodeInput" class="w-full h-36 p-3 text-sm font-mono border border-slate-300 rounded-lg mb-3"
+    <textarea id="barcodeInput" class="w-full barcode-input-box p-3 text-sm font-mono border border-slate-300 rounded-lg mb-3"
         placeholder="請在此貼上包含「姓名、佛堂」標題的 Excel 內容..."></textarea>
     <div class="flex flex-wrap gap-3">
         <button id="processBtn" onclick="processAttendance()"
@@ -236,7 +259,7 @@ body { font-size:1rem; background:#f1f5f9; }
 <!-- ══════════ PAGE 1：點傳師 + 忠字班 ══════════ -->
 <div id="page1">
     <!-- 統計三格 -->
-    <div class="grid grid-cols-3 gap-3 mb-4">
+    <div class="grid grid-cols-3 gap-3 stat-row-gap">
         <div class="bg-white p-4 rounded-xl border-t-8 border-blue-500 shadow-sm">
             <p class="text-xs font-bold text-slate-500 mb-1">應到人次（名單總計）</p>
             <p id="statTotal" class="stat-num">0</p>
