@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<title>各壇統計表</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+body { font-size:1.1rem; background:#f1f5f9; }
+.barcode-input-box { height: 5rem; } /* ← 【改輸入框的大小】*/
+
+/* ══════════════════════════════════════════════════════════════
+   主表欄寬設定
+   .idx-col   = 編號欄寬度
+   .name-col  = 壇名欄寬度
+   .count-col = 人數欄寬度（自動填滿剩餘空間）
+   ══════════════════════════════════════════════════════════════ */
+.g-row   { display:flex; border-bottom:1px solid #94a3b8; }
+.g-cell  { padding:7px 5px; overflow:hidden; white-space:nowrap;
+           display:flex; align-items:center; justify-content:center;
+           border-right:1px solid #94a3b8; box-sizing:border-box; }
+.g-cell:last-child { border-right:none; }
+.g-head  { background:#e2e8f0; font-weight:700; }
+.g-odd   { background:#ffffff; }
+.g-even  { background:#f8fafc; }
+
+.idx-col   { width:60px;  flex:0 0 60px;  }  /* ← 【編號欄寬度】px */
+.name-col  { width:150px; flex:0 0 150px; font-weight:700; }  /* ← 【壇名欄寬度】px */
+.count-col { flex:1 1 0; min-width:0; }      /* ← 【人數欄寬度】自動填滿 */
+
+.extra-name-col  { width:160px; flex:0 0 160px; font-weight:700; }  /* ← 【其他壇名欄寬度】px */
+.extra-count-col { flex:1 1 0; min-width:0; }
+
+/* ══════════════════════════════════════════════════════════════
+   文字大小設定（螢幕版）
+   ══════════════════════════════════════════════════════════════ */
+.g-cell { font-size:1.1rem; }  /* ← 【表格文字大小】 */
+
+@media print {
+    .no-print { display:none !important; }
+    body { background:white; padding:0; margin:0; }
+    .print-wrap { max-width:100%; width:80%; padding:0; margin:0; }
+    * { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+    .shadow-sm, .shadow-xl, .rounded-xl { box-shadow:none !important; }
+
+    /* ── 列印版文字大小（px），與螢幕版無關 ── */
+    .g-cell { font-size:18px; padding:6px 5px; }  /* ← 【列印文字大小／間距】 */
+    .idx-col   { width:36px;  flex:0 0 36px;  }   /* ← 【列印編號欄寬】 */
+    .name-col  { width:130px; flex:0 0 130px; }   /* ← 【列印壇名欄寬】 */
+}
+</style>
+</head>
+<body class="min-h-screen p-2 md:p-5">
+<div class="max-w-[1000px] mx-auto print-wrap">
+
+<!-- ── 操作區 ── -->
+<header class="no-print mb-5 bg-white p-5 rounded-xl shadow-xl border border-slate-200">
+    <h1 class="text-2xl font-bold mb-3">各壇統計表 - 資料輸入</h1>
+
+    <label class="block text-sm font-bold text-slate-600 mb-1">標題前綴（後面固定接「各壇統計表」）</label>
+    <input id="titlePrefix" type="text" value="正承人才班"
+        class="w-full p-3 text-lg border border-slate-300 rounded-lg mb-3" />
+
+    <label class="block text-sm font-bold text-slate-600 mb-1">
+        貼上包含「佛堂」標題欄的 Excel 內容（每人一行，會自動依佛堂計數）
+    </label>
+    <textarea id="dataInput" rows="8" class="w-full barcode-input-box p-3 text-sm font-mono border border-slate-300 rounded-lg mb-3"
+        placeholder="請在此貼上包含「佛堂」標題的 Excel 內容..."></textarea>
+
+    <div class="flex flex-wrap gap-3">
+        <button id="processBtn" onclick="processData()"
+            class="bg-blue-600 hover:bg-blue-700 text-white px-8 py-2 rounded-lg font-bold text-lg shadow">執行統計</button>
+        <button onclick="window.print()"
+            class="bg-slate-700 hover:bg-slate-800 text-white px-6 py-2 rounded-lg text-lg shadow">列印報表</button>
+        <button onclick="resetData()"
+            class="bg-white border border-slate-300 text-slate-600 px-6 py-2 rounded-lg text-lg hover:bg-slate-50">清空數據</button>
+    </div>
+</header>
+
+<!-- ── 列印標題 ── -->
+<div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden mb-4">
+    <div class="text-center py-3 text-2xl font-bold tracking-widest border-b border-slate-300">
+        <span id="printTitle">正承人才班各壇統計表</span>
+    </div>
+
+    <!-- 主表 36 壇，分兩欄 -->
+    <div class="flex">
+        <div class="flex-1 border-r-2 border-slate-400">
+            <div class="g-row g-head">
+                <div class="g-cell idx-col"></div>
+                <div class="g-cell name-col">壇　名</div>
+                <div class="g-cell count-col">人數</div>
+            </div>
+            <div id="tb_left"></div>
+        </div>
+        <div class="flex-1">
+            <div class="g-row g-head">
+                <div class="g-cell idx-col"></div>
+                <div class="g-cell name-col">壇名</div>
+                <div class="g-cell count-col">人數</div>
+            </div>
+            <div id="tb_right"></div>
+        </div>
+    </div>
+</div>
+
+<!-- ── 額外壇名區塊 ── -->
+<div id="extraSection" class="hidden bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden mb-4">
+    <div class="bg-orange-600 text-white px-4 py-1 text-sm font-bold text-center">其他壇名統計</div>
+    <div class="flex">
+        <div class="flex-1 border-r-2 border-slate-400">
+            <div class="g-row g-head">
+                <div class="g-cell idx-col"></div>
+                <div class="g-cell name-col">壇　名</div>
+                <div class="g-cell count-col">人數</div>
+            </div>
+            <div id="tb_extra_left"></div>
+        </div>
+        <div class="flex-1">
+            <div class="g-row g-head">
+                <div class="g-cell idx-col"></div>
+                <div class="g-cell name-col">壇名</div>
+                <div class="g-cell count-col">人數</div>
+            </div>
+            <div id="tb_extra_right"></div>
+        </div>
+    </div>
+</div>
+
+<!-- ── 總計 ── -->
+<div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden mb-4 p-4 text-center">
+    <span class="text-2xl font-bold">總計：　</span>
+    <span id="grandTotal" class="text-3xl font-bold text-blue-700">0</span>
+    <span class="text-2xl font-bold">　人</span>
+</div>
+
+</div><!-- /print-wrap -->
+<script>
+const ALTAR_LIST = [
+    "正承","正禮","正欣","正傳","正齊","正吉","正同","正通","正霖","正照",
+    "正港","正命","正路","正步","正沺","正奉","正湶","正積",
+    "正惟","正菁","正厚","正願","正師","正合","正洪","正湖","正宥","正漢",
+    "正嶺","正盛","正六","正持","正薰","正洲","正悅","正楷"
+];
+
+function buildBaseRows() {
+    const counts = {};
+    ALTAR_LIST.forEach(a => counts[a] = 0);
+    return counts;
+}
+
+function renderMain(counts) {
+    const left  = document.getElementById('tb_left');
+    const right = document.getElementById('tb_right');
+    left.innerHTML = '';
+    right.innerHTML = '';
+    const half = 18;
+    ALTAR_LIST.forEach((altar, i) => {
+        const idx = i + 1;
+        const val = counts[altar] || 0;
+        const row = document.createElement('div');
+        row.className = 'g-row ' + (i % 2 === 0 ? 'g-odd' : 'g-even');
+        row.innerHTML =
+            `<div class="g-cell idx-col" style="color:#94a3b8">${idx}</div>` +
+            `<div class="g-cell name-col">${altar}</div>` +
+            `<div class="g-cell count-col">${val > 0 ? val : ''}</div>`;
+        if (idx <= half) left.appendChild(row);
+        else right.appendChild(row);
+    });
+}
+
+function renderExtra(extraEntries) {
+    const sec   = document.getElementById('extraSection');
+    const left  = document.getElementById('tb_extra_left');
+    const right = document.getElementById('tb_extra_right');
+    left.innerHTML = '';
+    right.innerHTML = '';
+    if (!extraEntries.length) { sec.classList.add('hidden'); return; }
+    sec.classList.remove('hidden');
+    const half = Math.ceil(extraEntries.length / 2);
+    extraEntries.forEach(([name, val], i) => {
+        const idx = i + 1;
+        const row = document.createElement('div');
+        row.className = 'g-row ' + (i % 2 === 0 ? 'g-odd' : 'g-even');
+        row.innerHTML =
+            `<div class="g-cell idx-col" style="color:#94a3b8">${idx}</div>` +
+            `<div class="g-cell name-col">${name}</div>` +
+            `<div class="g-cell count-col">${val}</div>`;
+        if (i < half) left.appendChild(row);
+        else right.appendChild(row);
+    });
+    // 補空格線：若右邊行數少於左邊，補空白行
+    for (let i = right.children.length; i < left.children.length; i++) {
+        const row = document.createElement('div');
+        row.className = 'g-row ' + (i % 2 === 0 ? 'g-odd' : 'g-even');
+        row.innerHTML =
+            `<div class="g-cell idx-col">&nbsp;</div>` +
+            `<div class="g-cell name-col">&nbsp;</div>` +
+            `<div class="g-cell count-col">&nbsp;</div>`;
+        right.appendChild(row);
+    }
+}
+
+function updateTitle() {
+    const prefix = document.getElementById('titlePrefix').value.trim();
+    document.getElementById('printTitle').innerText = prefix + '各壇統計表';
+}
+
+function processData() {
+    updateTitle();
+    const raw = document.getElementById('dataInput').value.trim();
+    const counts = buildBaseRows();
+    const extraMap = {};
+    let total = 0;
+
+    if (raw) {
+        const lines = raw.split('\n').filter(l => l.trim() !== '');
+        if (lines.length >= 1) {
+            const hdr = lines[0].split('\t');
+            const ci = hdr.indexOf('佛堂');
+            if (ci === -1) {
+                alert('找不到「佛堂」欄！請確認貼上的內容含有標題列。');
+                return;
+            }
+            for (let i = 1; i < lines.length; i++) {
+                const row = lines[i].split('\t');
+                const church = (row[ci] || '').trim();
+                if (!church) continue;
+                total += 1;
+                if (ALTAR_LIST.includes(church)) {
+                    counts[church] = (counts[church] || 0) + 1;
+                } else {
+                    extraMap[church] = (extraMap[church] || 0) + 1;
+                }
+            }
+        }
+    }
+
+    const extra = Object.entries(extraMap);
+
+    renderMain(counts);
+    renderExtra(extra);
+    document.getElementById('grandTotal').innerText = total;
+
+    const btn = document.getElementById('processBtn');
+    btn.innerText = '統計完成！';
+    btn.classList.replace('bg-blue-600', 'bg-green-600');
+    setTimeout(() => {
+        btn.innerText = '執行統計';
+        btn.classList.replace('bg-green-600', 'bg-blue-600');
+    }, 1500);
+}
+
+function resetData() {
+    if (!confirm('確定清空所有資料？')) return;
+    document.getElementById('dataInput').value = '';
+    document.getElementById('titlePrefix').value = '正承人才班';
+    init();
+}
+
+function init() {
+    updateTitle();
+    renderMain(buildBaseRows());
+    renderExtra([]);
+    document.getElementById('grandTotal').innerText = '0';
+}
+
+window.onload = init;
+</script>
+</body>
+</html>
